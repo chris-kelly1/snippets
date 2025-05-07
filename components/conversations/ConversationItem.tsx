@@ -1,5 +1,6 @@
 import { Colors, FontSizes, FontWeights, Spacing } from '@/constants/theme';
 import { Conversation } from '@/types/conversation';
+import { useRouter } from 'expo-router';
 import React from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { GroupAvatar } from './GroupAvatar';
@@ -9,8 +10,17 @@ type ConversationItemProps = {
 }
 
 export const ConversationItem = ({ conversation }: ConversationItemProps) => {
+  const router = useRouter();
+
+  const handlePress = () => {
+    router.push({
+      pathname: '/message',
+      params: { conversationId: conversation.id }
+    });
+  };
+
   return (
-    <Pressable style={styles.conversationItem}>
+    <Pressable style={styles.conversationItem} onPress={handlePress}>
       <GroupAvatar avatars={conversation.avatars} />
       
       <View style={styles.conversationContent}>
