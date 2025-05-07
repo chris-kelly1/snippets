@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button"; // Make sure you have this component
+import { Link } from "expo-router";
 import React from "react";
 import { ImageBackground, StyleSheet, Text, View } from "react-native";
 
@@ -25,6 +26,12 @@ export default function LaunchScreen() {
           <Button style={styles.emailButton}>
             <Text style={styles.emailText}>Continue with Email</Text>
           </Button>
+          
+          <Link href="/home" asChild>
+            <Button style={styles.homeButton}>
+              <Text style={styles.homeText}>Go to Messages</Text>
+            </Button>
+          </Link>
         </View>
       </View>
     </ImageBackground>
@@ -87,8 +94,19 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 21,
     backgroundColor: "#0b171c",
+    marginBottom: 10,
   },
   emailText: {
+    color: "white",
+    fontSize: 18,
+    textAlign: "center",
+  },
+  homeButton: {
+    padding: 12,
+    borderRadius: 21,
+    backgroundColor: "#0a7ea4",
+  },
+  homeText: {
     color: "white",
     fontSize: 18,
     textAlign: "center",

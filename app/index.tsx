@@ -1,12 +1,5 @@
-import { useRouter } from "expo-router";
-import { useEffect } from "react";
+import { Redirect } from 'expo-router';
 
 export default function IndexScreen() {
-  const router = useRouter();
-
-  useEffect(() => {
-    router.replace("/launch");
-  }, []);
-
-  return null;
+  return <Redirect href="/launch" />;
 }
