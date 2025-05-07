@@ -15,7 +15,7 @@ export const dummyConversations: Conversation[] = [
     ],
     songTitle: 'Where Have You Been',
     artist: 'Rihanna',
-    albumCover: 'https://api.dicebear.com/7.x/identicon/png?seed=1',
+    albumCover: 'https://toomuchmusic.wordpress.com/wp-content/uploads/2012/07/rihanna-talk-that-talk.jpg',
     hasUnread: true,
   },
   {
@@ -26,7 +26,7 @@ export const dummyConversations: Conversation[] = [
     avatars: ['https://api.dicebear.com/7.x/avataaars/png?seed=Chris'],
     songTitle: 'Daddy On The Floor',
     artist: 'Jamie xx, Honey Dijon',
-    albumCover: 'https://api.dicebear.com/7.x/identicon/png?seed=2',
+    albumCover: 'https://i1.sndcdn.com/artworks-2czKSJpH81xH-0-t500x500.png',
     hasUnread: true,
   },
   {
@@ -37,7 +37,7 @@ export const dummyConversations: Conversation[] = [
     avatars: ['https://api.dicebear.com/7.x/avataaars/png?seed=Calvin'],
     songTitle: 'Jamming',
     artist: 'FISHER Rework - Bob Marley and The Wailers',
-    albumCover: 'https://api.dicebear.com/7.x/identicon/png?seed=3',
+    albumCover: 'https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/e7/24/4e/e7244ef1-a9f6-e754-72ae-578814f7c11e/24UMGIM11528.rgb.jpg/600x600bf-60.jpg',
     hasUnread: false,
   },
   {
@@ -48,7 +48,7 @@ export const dummyConversations: Conversation[] = [
     avatars: ['https://api.dicebear.com/7.x/avataaars/png?seed=Jack'],
     songTitle: 'Georgia',
     artist: 'Kevin Abstract',
-    albumCover: 'https://api.dicebear.com/7.x/identicon/png?seed=4',
+    albumCover: 'https://i.scdn.co/image/ab67616d0000b273595101c281d7e229e1f0e6c4',
     hasUnread: false,
   },
   {
@@ -64,7 +64,7 @@ export const dummyConversations: Conversation[] = [
     ],
     songTitle: 'Still Riding',
     artist: 'Barry Can\'t Swim',
-    albumCover: 'https://api.dicebear.com/7.x/identicon/png?seed=5',
+    albumCover: 'https://f4.bcbits.com/img/a1110013304_16.jpg',
     hasUnread: false,
   },
 ]; 
