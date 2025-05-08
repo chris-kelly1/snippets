@@ -1,40 +1,38 @@
 import { Button } from "@/components/ui/button"; // Make sure you have this component
 import { Link } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import React from "react";
 import { ImageBackground, StyleSheet, Text, View } from "react-native";
 
+// Import the SVG directly
+import SpotifyLogo from "@/assets/images/spotify.svg";
+
 export default function LaunchScreen() {
   return (
-    <ImageBackground
-      source={require("@/assets/images/launch-screen.png")} // Update path if needed
-      style={styles.background}
-      imageStyle={styles.image}
-    >
-      <View style={styles.container}>
-        <Text style={styles.title}>snippets</Text>
-        <View style={styles.card}>
-          <Text style={styles.subtitle}>Welcome Back!</Text>
-
-          <Button style={styles.googleButton}>
-            <Text style={styles.googleText}>Continue with Google</Text>
-          </Button>
-
-          <Button style={styles.appleButton}>
-            <Text style={styles.appleText}>Continue with Apple</Text>
-          </Button>
-
-          <Button style={styles.emailButton}>
-            <Text style={styles.emailText}>Continue with Email</Text>
-          </Button>
-          
-          <Link href="/home" asChild>
-            <Button style={styles.homeButton}>
-              <Text style={styles.homeText}>Go to Messages</Text>
-            </Button>
-          </Link>
+    <>
+      <StatusBar style="light" />
+      <ImageBackground
+        source={require("@/assets/images/launch-screen.png")}
+        style={styles.background}
+        imageStyle={styles.image}
+      >
+        <View style={styles.container}>          
+          <View style={styles.cardContainer}>
+            <View style={styles.card}>
+              
+              <Link href="/home" asChild>
+                <Button style={styles.spotifyButton}>
+                  <View style={styles.buttonContent}>
+                    <SpotifyLogo width={24} height={24} style={styles.spotifyLogo} />
+                    <Text style={styles.spotifyText}>Continue with Spotify</Text>
+                  </View>
+                </Button>
+              </Link>
+            </View>
+          </View>
         </View>
-      </View>
-    </ImageBackground>
+      </ImageBackground>
+    </>
   );
 }
 
@@ -42,73 +40,70 @@ const styles = StyleSheet.create({
   background: {
     flex: 1,
     justifyContent: "space-between",
-    paddingTop: 175,
-    paddingBottom: 66,
   },
   image: {
     resizeMode: "cover",
   },
   container: {
+    flex: 1,
     alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 100,
+    paddingBottom: 40,
   },
   title: {
-    fontSize: 32,
+    fontSize: 36,
     fontWeight: "900",
     color: "white",
+    letterSpacing: 0.5,
   },
-  subtitle: {
-    fontSize: 24,
-    fontWeight: "600",
-    marginBottom: 16,
+  cardContainer: {
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    marginTop: "auto", // Push to bottom
   },
   card: {
     width: 360,
-    borderRadius: 20,
-    padding: 16,
-    backgroundColor: "white",
+    borderRadius: 24,
+    padding: 24,
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    backdropFilter: "blur(10px)",
   },
-  googleButton: {
-    marginBottom: 10,
-    padding: 12,
-    borderColor: "black",
-    borderWidth: 1,
-    borderRadius: 21,
-  },
-  googleText: {
-    color: "#0000008a",
-    fontSize: 18,
+  subtitle: {
+    fontSize: 28,
+    fontWeight: "700",
+    marginBottom: 24,
+    color: "#222",
     textAlign: "center",
   },
-  appleButton: {
-    marginBottom: 10,
-    padding: 12,
-    backgroundColor: "black",
-    borderRadius: 21,
+  spotifyButton: {
+    padding: 14,
+    borderRadius: 50,
+    backgroundColor: "#0D1117", // Updated to match the dark color from attached image
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
   },
-  appleText: {
+  buttonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  spotifyLogo: {
+    marginRight: 10,
+  },
+  spotifyText: {
     color: "white",
     fontSize: 18,
-    textAlign: "center",
-  },
-  emailButton: {
-    padding: 12,
-    borderRadius: 21,
-    backgroundColor: "#0b171c",
-    marginBottom: 10,
-  },
-  emailText: {
-    color: "white",
-    fontSize: 18,
-    textAlign: "center",
-  },
-  homeButton: {
-    padding: 12,
-    borderRadius: 21,
-    backgroundColor: "#0a7ea4",
-  },
-  homeText: {
-    color: "white",
-    fontSize: 18,
+    fontWeight: "700",
     textAlign: "center",
   },
 });
