@@ -3,12 +3,15 @@ import { Link } from "expo-router";
 import React from "react";
 import { ImageBackground, StyleSheet, Text, View } from "react-native";
 
+// TEST
+
 export default function LaunchScreen() {
   return (
     <ImageBackground
       source={require("@/assets/images/launch-screen.png")} // Update path if needed
       style={styles.background}
       imageStyle={styles.image}
+      
     >
       <View style={styles.container}>
         <Text style={styles.title}>snippets</Text>
