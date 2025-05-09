@@ -1,14 +1,17 @@
 export const Colors = {
-  primary: '#0a7ea4',
-  background: '#0b171c',
+  primary: "#0a7ea4",
+  background: "#0b171c",
   text: {
-    primary: '#FFFFFF',
-    secondary: '#9BA1A6',
+    primary: "#ffffff",
+    secondary: "#cccccc",
   },
   button: {
-    active: '#0a7ea4',
-    inactive: 'rgba(120, 130, 140, 0.2)',
+    active: "#0a7ea4",
+    inactive: "#cccccc",
   },
+  border: "#333333",
+  card: "#1a1a1a",
+  error: "#ff3b30",
 };
 
 export const Spacing = {
@@ -30,9 +33,9 @@ export const FontSizes = {
 };
 
 export const FontWeights = {
-  regular: '400' as const,
-  medium: '500' as const, 
-  semiBold: '600' as const,
-  bold: '700' as const,
-  black: '900' as const,
-}; 
+  regular: "400" as const,
+  medium: "500" as const,
+  semiBold: "600" as const,
+  bold: "700" as const,
+  black: "900" as const,
+};
