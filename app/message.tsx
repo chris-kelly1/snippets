@@ -5,7 +5,6 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useMemo, useState } from "react";
 import {
-  Button,
   Image,
   StyleSheet,
   Text,
@@ -149,14 +148,6 @@ export default function MessageScreen() {
     },
   });
 
-  // Debug: fallback button to advance card
-  const handleNext = () => {
-    if (currentIndex < cards.length - 1) setCurrentIndex(currentIndex + 1);
-  };
-  const handlePrev = () => {
-    if (currentIndex > 0) setCurrentIndex(currentIndex - 1);
-  };
-
   // Always call VISIBLE_CARDS hooks and render VISIBLE_CARDS slots
   const animatedStyles = Array(VISIBLE_CARDS).fill(0).map((_, i) =>
     useAnimatedStyle(() => {
@@ -271,13 +262,6 @@ export default function MessageScreen() {
                 );
               }
             })}
-          </View>
-
-          {/* Debug buttons for advancing cards if swipe fails */}
-          <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 8 }}>
-            <Button title="Prev" onPress={handlePrev} disabled={currentIndex === 0} />
-            <View style={{ width: 16 }} />
-            <Button title="Next" onPress={handleNext} disabled={currentIndex === cards.length - 1} />
           </View>
         </View>
 
