@@ -3,15 +3,17 @@ import { dummyConversations } from "@/data/conversations";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
+  Button,
   Image,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
+import { PanGestureHandler } from 'react-native-gesture-handler';
+import Animated, { runOnJS, useAnimatedGestureHandler, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { SafeAreaView } from "react-native-safe-area-context";
 
 // Extended type for the message screen
@@ -27,6 +29,13 @@ type ExtendedConversation = {
   };
   members: { id: string; avatar: string }[];
 };
+
+const CARD_HEIGHT = 180;
+const CARD_WIDTH = '90%';
+const CARD_STACK_OFFSET = 18;
+const CARD_SCALE_STEP = 0.07;
+const VISIBLE_CARDS = 3;
+const CARD_OVERLAP = 20; // px
 
 export default function MessageScreen() {
   const router = useRouter();
@@ -98,6 +107,86 @@ export default function MessageScreen() {
     router.back();
   };
 
+  const cards = [
+    conversation.currentSong,
+    {
+      title: "Blinding Lights",
+      artist: "The Weeknd",
+      lyrics: [
+        "I said, ooh, I'm blinded by the lights",
+        "No, I can't sleep until I feel your touch",
+        "I said, ooh, I'm drowning in the night"
+      ],
+      albumCover: "https://upload.wikimedia.org/wikipedia/en/0/09/The_Weeknd_-_Blinding_Lights.png"
+    },
+    {
+      title: "Body On The Floor",
+      artist: "Junior Jack, Maddy O'Neal",
+      lyrics: [
+        "Thank you everyone for stepping out tonight",
+        "Move your body, move your body",
+        "Move your body, move your body"
+      ],
+      albumCover: "https://upload.wikimedia.org/wikipedia/en/6/6a/Junior_Jack_-_Trust_It.png"
+    }
+  ];
+
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const transition = useSharedValue(0);
+
+  // Gesture handler
+  const gestureHandler = useAnimatedGestureHandler({
+    onActive: (event) => {
+      transition.value = event.translationY;
+    },
+    onEnd: (event) => {
+      if (event.translationY < -50 && currentIndex < cards.length - 1) {
+        runOnJS(setCurrentIndex)(currentIndex + 1);
+      } else if (event.translationY > 50 && currentIndex > 0) {
+        runOnJS(setCurrentIndex)(currentIndex - 1);
+      }
+      transition.value = withSpring(0);
+    },
+  });
+
+  // Debug: fallback button to advance card
+  const handleNext = () => {
+    if (currentIndex < cards.length - 1) setCurrentIndex(currentIndex + 1);
+  };
+  const handlePrev = () => {
+    if (currentIndex > 0) setCurrentIndex(currentIndex - 1);
+  };
+
+  // Always call VISIBLE_CARDS hooks and render VISIBLE_CARDS slots
+  const animatedStyles = Array(VISIBLE_CARDS).fill(0).map((_, i) =>
+    useAnimatedStyle(() => {
+      const scale = 1 - i * CARD_SCALE_STEP;
+      // Offset so the focused card is always centered, and others are stacked upward
+      const translateY = -i * CARD_OVERLAP;
+      let y = 0;
+      if (i === 0) {
+        y = transition.value;
+      }
+      return {
+        position: 'absolute',
+        alignSelf: 'center',
+        transform: [
+          { translateY: y + translateY },
+          { scale },
+        ],
+        zIndex: VISIBLE_CARDS - i,
+        opacity: 1 - i * 0.12,
+      };
+    })
+  );
+
+  // Always render VISIBLE_CARDS slots
+  const visibleCards = [];
+  for (let i = 0; i < VISIBLE_CARDS; i++) {
+    const card = cards[currentIndex + i];
+    visibleCards.push(card || null);
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
@@ -127,7 +216,7 @@ export default function MessageScreen() {
         </View>
 
         {/* Content */}
-        <ScrollView style={styles.content}>
+        <View style={styles.content}>
           {/* User Profile */}
           <View style={styles.profileSection}>
             <Text style={styles.userName}>Reid McCaw</Text>
@@ -139,44 +228,58 @@ export default function MessageScreen() {
             </View>
           </View>
 
-          {/* Current Song */}
-          <View style={styles.songContainer}>
-            <Image
-              source={{ uri: conversation.currentSong.albumCover }}
-              style={styles.albumCover}
-            />
-            <View style={styles.lyricsContainer}>
-              {conversation.currentSong.lyrics.map((line, index) => (
-                <Text
-                  key={index}
-                  style={[
-                    styles.lyricText,
-                    index === 0
-                      ? styles.firstLyricLine
-                      : index === 1
-                      ? styles.highlightedLyricLine
-                      : styles.lastLyricLine,
-                  ]}
-                >
-                  {line}
-                </Text>
-              ))}
-              <View style={styles.songInfoContainer}>
-                <Text style={styles.songTitle}>
-                  {conversation.currentSong.title}
-                </Text>
-                <Text style={styles.artistName}>
-                  {conversation.currentSong.artist}
-                </Text>
-              </View>
-            </View>
-
-            {/* Audio wave icon */}
-            <View style={styles.audioWaveContainer}>
-              <Ionicons name="pulse" size={24} color={Colors.text.primary} />
-            </View>
+          {/* Card Stack */}
+          <View style={{ height: 260, alignItems: 'center', justifyContent: 'center', marginBottom: 32, position: 'relative' }}>
+            {visibleCards.map((card, i) => {
+              if (!card) return null;
+              if (i === 0) {
+                // Only top card is interactive
+                return (
+                  <PanGestureHandler
+                    key={currentIndex + i}
+                    onGestureEvent={gestureHandler}
+                  >
+                    <Animated.View style={[styles.mockupCard, animatedStyles[i]]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Image source={{ uri: card.albumCover }} style={styles.mockupAlbumCover} />
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <Text style={styles.mockupSongTitle}>{card.lyrics[0]}</Text>
+                          <Text style={styles.mockupSongSubtitle}>{card.lyrics[1]}</Text>
+                          <Text style={styles.mockupSongSubtitle}>{card.lyrics[2]}</Text>
+                          <Text style={styles.mockupSongMeta}>{card.title} - {card.artist}</Text>
+                        </View>
+                        <Ionicons name="pulse" size={24} color={Colors.text.primary} style={{ marginLeft: 8 }} />
+                      </View>
+                    </Animated.View>
+                  </PanGestureHandler>
+                );
+              } else {
+                // Non-top cards are not interactive
+                return (
+                  <Animated.View key={currentIndex + i} style={[styles.mockupCard, animatedStyles[i]]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Image source={{ uri: card.albumCover }} style={styles.mockupAlbumCover} />
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={styles.mockupSongTitle}>{card.lyrics[0]}</Text>
+                        <Text style={styles.mockupSongSubtitle}>{card.lyrics[1]}</Text>
+                        <Text style={styles.mockupSongSubtitle}>{card.lyrics[2]}</Text>
+                        <Text style={styles.mockupSongMeta}>{card.title} - {card.artist}</Text>
+                      </View>
+                      <Ionicons name="pulse" size={24} color={Colors.text.primary} style={{ marginLeft: 8 }} />
+                    </View>
+                  </Animated.View>
+                );
+              }
+            })}
           </View>
-        </ScrollView>
+
+          {/* Debug buttons for advancing cards if swipe fails */}
+          <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 8 }}>
+            <Button title="Prev" onPress={handlePrev} disabled={currentIndex === 0} />
+            <View style={{ width: 16 }} />
+            <Button title="Next" onPress={handleNext} disabled={currentIndex === cards.length - 1} />
+          </View>
+        </View>
 
         {/* Bottom user list */}
         <View style={styles.bottomContainer}>
@@ -269,49 +372,43 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
-  songContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: Spacing.md,
-    marginBottom: Spacing.xl,
+  mockupCard: {
+    width: '90%',
+    height: CARD_HEIGHT,
+    backgroundColor: '#222',
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 8,
+    padding: 20,
+    marginBottom: 0,
+    justifyContent: 'center',
   },
-  albumCover: {
-    width: 65,
-    height: 65,
+  mockupAlbumCover: {
+    width: 48,
+    height: 48,
     borderRadius: 8,
-    marginRight: Spacing.md,
+    marginRight: 8,
   },
-  lyricsContainer: {
-    flex: 1,
+  mockupSongTitle: {
+    color: '#7EB6FF',
+    fontWeight: 'bold',
+    fontSize: 18,
+    marginBottom: 2,
   },
-  lyricText: {
-    color: Colors.text.primary,
-    fontSize: FontSizes.md,
-    marginBottom: Spacing.xs / 2,
+  mockupSongSubtitle: {
+    color: '#bbb',
+    fontSize: 15,
+    marginBottom: 1,
   },
-  firstLyricLine: {
-    opacity: 0.6,
-  },
-  highlightedLyricLine: {
-    color: "#4A7AFF",
-    fontWeight: FontWeights.semiBold,
-  },
-  lastLyricLine: {
-    opacity: 0.6,
-  },
-  songInfoContainer: {
-    marginTop: Spacing.sm,
-  },
-  songTitle: {
-    color: Colors.text.secondary,
-    fontSize: FontSizes.sm,
-  },
-  artistName: {
-    color: Colors.text.secondary,
-    fontSize: FontSizes.sm,
-  },
-  audioWaveContainer: {
-    padding: Spacing.sm,
+  mockupSongMeta: {
+    color: '#aaa',
+    fontSize: 12,
+    marginTop: 4,
   },
   bottomContainer: {
     paddingVertical: Spacing.md,

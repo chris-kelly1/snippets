@@ -5,6 +5,7 @@ export const dummyConversations: Conversation[] = [
   {
     id: '1',
     name: 'The Fellas',
+    speakerName: 'Reid McCaw',
     lastMessage: 'Where have you been all my l-i-i-i-i-fe',
     time: '11:47 AM',
     avatars: [
@@ -43,7 +44,7 @@ export const dummyConversations: Conversation[] = [
   {
     id: '4',
     name: 'Jack Ryan',
-    lastMessage: 'Call my mom and let her know that I\'m alright',
+    lastMessage: 'Call my mom and let her know that everything is alright',
     time: 'Yesterday',
     avatars: ['https://api.dicebear.com/7.x/avataaars/png?seed=Jack'],
     songTitle: 'Georgia',
