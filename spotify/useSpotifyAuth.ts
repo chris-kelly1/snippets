@@ -32,7 +32,7 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const { CLIENT_ID, SCOPES, REDIRECT_URI, SPOTIFY_API } = getEnv();
+  const { CLIENT_ID, SCOPES, SPOTIFY_API } = getEnv();
 
   const [request, response, promptAsync] = useAuthRequest(
     {
@@ -41,7 +41,7 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
       scopes: SCOPES,
       usePKCE: false,
       redirectUri: makeRedirectUri({
-        scheme: "spotify",
+        scheme: "snippets",
         path: "auth",
       }),
     },
