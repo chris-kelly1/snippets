@@ -12,9 +12,10 @@ export default function LaunchScreen() {
 
   const handleSpotifyLogin = async () => {
     await login();
-    // The token will be handled by the useSpotifyAuth hook
-    // We can navigate to home after successful login
-    router.replace("/home");
+    // Only navigate if there's no error (meaning authentication was successful)
+    if (!error) {
+      router.replace("/home");
+    }
   };
 
   return (

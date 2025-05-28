@@ -56,6 +56,9 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
       setToken(access_token);
     } else if (response?.type === "error") {
       setError(new Error(response.error?.message || "Authentication failed"));
+    } else if (response?.type === "cancel") {
+      // Handle cancellation explicitly
+      setError(new Error("Authentication was cancelled"));
     }
   }, [response]);
 
