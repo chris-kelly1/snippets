@@ -1,13 +1,23 @@
-import { Button } from "@/components/ui/button"; // Make sure you have this component
-import { Link } from "expo-router";
+import SpotifyLogo from "@/assets/images/spotify.svg";
+import { Button } from "@/components/ui/button";
+import useSpotifyAuth from "@/spotify/useSpotifyAuth";
+import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React from "react";
 import { ImageBackground, StyleSheet, Text, View } from "react-native";
 
-// Import the SVG directly
-import SpotifyLogo from "@/assets/images/spotify.svg";
-
 export default function LaunchScreen() {
+  const router = useRouter();
+  const { login, error, isLoading } = useSpotifyAuth();
+
+  const handleSpotifyLogin = async () => {
+    await login();
+    // Only navigate if there's no error (meaning authentication was successful)
+    if (!error) {
+      router.replace("/home");
+    }
+  };
+
   return (
     <>
       <StatusBar style="light" />
@@ -16,18 +26,26 @@ export default function LaunchScreen() {
         style={styles.background}
         imageStyle={styles.image}
       >
-        <View style={styles.container}>          
+        <View style={styles.container}>
           <View style={styles.cardContainer}>
             <View style={styles.card}>
-              
-              <Link href="/home" asChild>
-                <Button style={styles.spotifyButton}>
-                  <View style={styles.buttonContent}>
-                    <SpotifyLogo width={24} height={24} style={styles.spotifyLogo} />
-                    <Text style={styles.spotifyText}>Continue with Spotify</Text>
-                  </View>
-                </Button>
-              </Link>
+              <Button
+                style={styles.spotifyButton}
+                onPress={handleSpotifyLogin}
+                disabled={isLoading}
+              >
+                <View style={styles.buttonContent}>
+                  <SpotifyLogo
+                    width={24}
+                    height={24}
+                    style={styles.spotifyLogo}
+                  />
+                  <Text style={styles.spotifyText}>
+                    {isLoading ? "Loading..." : "Continue with Spotify"}
+                  </Text>
+                </View>
+              </Button>
+              {error && <Text style={styles.errorText}>{error.message}</Text>}
             </View>
           </View>
         </View>
@@ -85,7 +103,7 @@ const styles = StyleSheet.create({
   spotifyButton: {
     padding: 14,
     borderRadius: 50,
-    backgroundColor: "#0D1117", // Updated to match the dark color from attached image
+    backgroundColor: "#0D1117",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
@@ -105,5 +123,10 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     textAlign: "center",
+  },
+  errorText: {
+    color: "red",
+    textAlign: "center",
+    marginTop: 10,
   },
 });
