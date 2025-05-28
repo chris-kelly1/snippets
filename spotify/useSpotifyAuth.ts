@@ -34,16 +34,19 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
 
   const { CLIENT_ID, SCOPES, SPOTIFY_API } = getEnv();
 
+  const redirectUri = makeRedirectUri({
+    scheme: "snippets",
+    path: "auth",
+  });
+  console.log("Generated Redirect URI:", redirectUri);
+
   const [request, response, promptAsync] = useAuthRequest(
     {
       responseType: ResponseType.Token,
       clientId: CLIENT_ID,
       scopes: SCOPES,
       usePKCE: false,
-      redirectUri: makeRedirectUri({
-        scheme: "snippets",
-        path: "auth",
-      }),
+      redirectUri: redirectUri,
     },
     SPOTIFY_API.DISCOVERY
   );
