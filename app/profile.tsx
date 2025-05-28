@@ -1,5 +1,6 @@
 import useSpotifyAuth from "@/spotify/useSpotifyAuth";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -25,6 +26,26 @@ export default function ProfileScreen() {
   const [profileImage, setProfileImage] = useState(
     initialProfileImageUrl || "https://via.placeholder.com/150"
   ); // Replace with actual user image or placeholder
+
+  const pickImage = async () => {
+    // Request permission to access media library
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      alert("Sorry, we need camera roll permissions to make this work!");
+      return;
+    }
+
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setProfileImage(result.assets[0].uri);
+    }
+  };
 
   const handleSaveProfile = () => {
     // Implement save logic here (e.g., send updated data to backend/API)
@@ -73,14 +94,9 @@ export default function ProfileScreen() {
                 placeholder="Username"
                 placeholderTextColor="#aaaaaa"
               />
-              <TextInput
-                style={styles.input}
-                value={profileImage}
-                onChangeText={setProfileImage}
-                placeholder="Profile Image URL"
-                placeholderTextColor="#aaaaaa"
-                keyboardType="url"
-              />
+              <TouchableOpacity onPress={pickImage}>
+                <Text style={styles.editPhotoText}>Edit Photo</Text>
+              </TouchableOpacity>
             </>
           ) : (
             <>
@@ -247,5 +263,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "bold",
     color: "#cccccc", // Lighter text for sign out
+  },
+  editPhotoText: {
+    color: "#1DB954", // Spotify green
+    fontSize: 16,
+    marginTop: 8,
+    textDecorationLine: "underline",
   },
 });

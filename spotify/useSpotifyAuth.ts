@@ -38,7 +38,6 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
     scheme: "snippets",
     path: "auth",
   });
-  console.log("Generated Redirect URI:", redirectUri);
 
   const [request, response, promptAsync] = useAuthRequest(
     {
