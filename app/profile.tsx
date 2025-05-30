@@ -101,7 +101,6 @@ export default function ProfileScreen() {
           ) : (
             <>
               <Text style={styles.profileName}>{userName}</Text>
-              {/* <Text style={styles.profileEmail}>john.doe@example.com</Text> // Assuming email is not editable here */}
             </>
           )}
 
@@ -199,11 +198,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "bold",
     color: "#ffffff",
-    marginBottom: 16,
-  },
-  profileEmail: {
-    fontSize: 16,
-    color: "#cccccc",
     marginBottom: 16,
   },
   input: {
