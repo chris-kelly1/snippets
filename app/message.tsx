@@ -3,9 +3,9 @@ import { dummyConversations } from "@/data/conversations";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { useMemo, useRef, useState } from "react";
+import { MotiView } from "moti";
+import React, { useMemo, useState } from "react";
 import {
-  Animated,
   Dimensions,
   Image,
   StyleSheet,
@@ -103,18 +103,18 @@ const mapData = (data: CardData[], prefix: string): CardItem[] =>
   }));
 
 const CardStack = ({ cards }: CardStackProps) => {
-  // Create multiple copies for seamless rotation
+  // Create multiple copies for seamless rotation (matching original logic)
   const dataClone = [
-    ...mapData(cards, "1"),
-    ...mapData(cards, "2"),
-    ...mapData(cards, "3"),
-    ...mapData(cards, "4")
+    ...mapData(cards, "1"), // Exit animations
+    ...mapData(cards, "2"), // Currently displayed
+    ...mapData(cards, "3"), // Initial animation
+    ...mapData(cards, "4")  // Avoid final->initial animation
   ];
 
   const [state, setState] = useState({ current: 0, arr: dataClone });
   const length = cards.length;
 
-  // Function to rotate the array
+  // Function to rotate the array (directly from original)
   const rotateArray = (n = 1) => {
     const newArr = [...state.arr];
     if (n > 0) {
@@ -136,6 +136,7 @@ const CardStack = ({ cards }: CardStackProps) => {
     <View style={styles.cardStackContainer}>
       {state.arr.map(
         (item, i) =>
+          // Render only first 3 copies (matching original logic)
           i < length * 3 && (
             <AnimatedCard
               key={item.id}
@@ -152,12 +153,7 @@ const CardStack = ({ cards }: CardStackProps) => {
 };
 
 const AnimatedCard = ({ i, card, length, rotateArray, current }: AnimatedCardProps) => {
-  const translateX = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
-  const scale = useRef(new Animated.Value(1)).current;
-  const opacity = useRef(new Animated.Value(1)).current;
-
-  // Helpers to determine card position
+  // Helpers to determine card position (directly from original)
   const isLeft = i < length;
   const isFirst = i === length;
   const isCenter = i > length && i <= length * 2 - 1;
@@ -165,117 +161,61 @@ const AnimatedCard = ({ i, card, length, rotateArray, current }: AnimatedCardPro
 
   const iFromFirst = i - length;
 
-  // Calculate positions based on card index
+  // Calculate positions (adapted from original but simplified for React Native)
   const getCardStyle = () => {
-    let baseTranslateX = 0;
-    let baseTranslateY = 0;
-    let cardScale = 1;
-    let cardOpacity = 1;
-    let zIndex = length - i;
-
+    const leftOffset = -30; // Slight offset to move cards left
+    
     if (isLeft) {
-      // Cards that have moved to the left (exit position)
-      baseTranslateX = -CARD_WIDTH * 1.5;
-      baseTranslateY = 0;
-      cardOpacity = 0;
-      zIndex = 0;
+      return {
+        translateX: -CARD_WIDTH * 1.5 + leftOffset,
+        translateY: 0,
+        scale: 0.8,
+        opacity: 0,
+        zIndex: 0,
+      };
     } else if (isFirst) {
-      // The front card (draggable)
-      baseTranslateX = 0;
-      baseTranslateY = 0;
-      cardScale = 1;
-      zIndex = length;
+      return {
+        translateX: 0 + leftOffset,
+        translateY: 0,
+        scale: 1,
+        opacity: 1,
+        zIndex: length,
+      };
     } else if (isCenter) {
-      // Stacked cards behind the first
       const offset = iFromFirst * 20;
-      baseTranslateX = offset;
-      baseTranslateY = offset * 0.5;
-      cardScale = 1 - (iFromFirst * 0.05);
-      cardOpacity = 1 - (iFromFirst * 0.2);
-      zIndex = length - iFromFirst;
+      return {
+        translateX: offset + leftOffset,
+        translateY: offset * 0.5,
+        scale: 1 - (iFromFirst * 0.05),
+        opacity: 1 - (iFromFirst * 0.2),
+        zIndex: length - iFromFirst,
+      };
     } else if (isRight) {
-      // Cards coming in from the right
-      baseTranslateX = CARD_WIDTH * 1.5;
-      baseTranslateY = 0;
-      cardOpacity = 0;
-      zIndex = 0;
+      return {
+        translateX: CARD_WIDTH * 1.5 + leftOffset,
+        translateY: 0,
+        scale: 0.8,
+        opacity: 0,
+        zIndex: 0,
+      };
     }
-
-    return {
-      transform: [
-        { translateX: Animated.add(translateX, new Animated.Value(baseTranslateX)) },
-        { translateY: Animated.add(translateY, new Animated.Value(baseTranslateY)) },
-        { scale: Animated.multiply(scale, new Animated.Value(cardScale)) }
-      ],
-      opacity: Animated.multiply(opacity, new Animated.Value(cardOpacity)),
-      zIndex
-    };
+    
+    return { translateX: leftOffset, translateY: 0, scale: 1, opacity: 1, zIndex: 1 };
   };
 
-  const handlePanGesture = (event: any) => {
-    if (!isFirst) return;
-
-    const { translationX, translationY } = event.nativeEvent;
-    translateX.setValue(translationX);
-    translateY.setValue(translationY * 0.3); // Reduce vertical movement
-  };
-
+  const cardStyle = getCardStyle();
+  
   const handlePanEnd = (event: any) => {
     if (!isFirst) return;
 
     const { translationX, velocityX } = event.nativeEvent;
     const minVelocity = Math.abs(velocityX) > 500;
     const minDistance = Math.abs(translationX) > CARD_WIDTH * 0.3;
+    const direction = translationX > 0 ? -1 : 1;
 
     if (minDistance && minVelocity) {
-      // Animate card off screen then rotate
-      const direction = translationX > 0 ? CARD_WIDTH * 2 : -CARD_WIDTH * 2;
-      
-      Animated.parallel([
-        Animated.timing(translateX, {
-          toValue: direction,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacity, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        })
-      ]).start(() => {
-        // Reset values and rotate array
-        translateX.setValue(0);
-        translateY.setValue(0);
-        opacity.setValue(1);
-        rotateArray(translationX > 0 ? -1 : 1);
-      });
-    } else {
-      // Snap back to original position
-      Animated.parallel([
-        Animated.spring(translateX, {
-          toValue: 0,
-          useNativeDriver: true,
-        }),
-        Animated.spring(translateY, {
-          toValue: 0,
-          useNativeDriver: true,
-        })
-      ]).start();
+      rotateArray(direction);
     }
-  };
-
-  const handlePressIn = () => {
-    Animated.spring(scale, {
-      toValue: 1.05,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(scale, {
-      toValue: 1,
-      useNativeDriver: true,
-    }).start();
   };
 
   const handleTap = () => {
@@ -286,7 +226,6 @@ const AnimatedCard = ({ i, card, length, rotateArray, current }: AnimatedCardPro
 
   return (
     <PanGestureHandler
-      onGestureEvent={handlePanGesture}
       onHandlerStateChange={(event) => {
         if (event.nativeEvent.state === State.END) {
           handlePanEnd(event);
@@ -294,17 +233,24 @@ const AnimatedCard = ({ i, card, length, rotateArray, current }: AnimatedCardPro
       }}
       enabled={isFirst}
     >
-      <Animated.View
-        style={[
-          styles.animatedCard,
-          getCardStyle()
-        ]}
+      <MotiView
+        style={[styles.animatedCard, { zIndex: cardStyle.zIndex }]}
+        animate={{
+          translateX: cardStyle.translateX,
+          translateY: cardStyle.translateY,
+          scale: cardStyle.scale,
+          opacity: cardStyle.opacity,
+        }}
+        transition={{
+          type: 'spring',
+          damping: 30,
+          stiffness: 300,
+          delay: (iFromFirst + current) * 25,
+        }}
       >
         <TouchableOpacity
           style={styles.cardTouchable}
           onPress={handleTap}
-          onPressIn={handlePressIn}
-          onPressOut={handlePressOut}
           activeOpacity={0.9}
         >
           <View style={styles.cardContent}>
@@ -322,7 +268,7 @@ const AnimatedCard = ({ i, card, length, rotateArray, current }: AnimatedCardPro
             </View>
           </View>
         </TouchableOpacity>
-      </Animated.View>
+      </MotiView>
     </PanGestureHandler>
   );
 };
@@ -538,10 +484,12 @@ const styles = StyleSheet.create({
   },
   cardStackContainer: {
     height: 320,
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 32,
     position: 'relative',
+    overflow: 'visible',
   },
   animatedCard: {
     position: 'absolute',
