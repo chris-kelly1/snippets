@@ -12,8 +12,8 @@ export default function LaunchScreen() {
 
   const handleSpotifyLogin = async () => {
     await login();
-    // Only navigate if there's no error (meaning authentication was successful)
-    if (!error) {
+    // Only navigate if there's no error or if the error is not a cancellation
+    if (!error || error.message !== "Authentication was cancelled") {
       router.replace("/home");
     }
   };
@@ -24,7 +24,7 @@ export default function LaunchScreen() {
       <ImageBackground
         source={require("@/assets/images/launch-screen.png")}
         style={styles.background}
-        imageStyle={styles.image}
+        resizeMode="cover"
       >
         <View style={styles.container}>
           <View style={styles.cardContainer}>
@@ -57,10 +57,8 @@ export default function LaunchScreen() {
 const styles = StyleSheet.create({
   background: {
     flex: 1,
-    justifyContent: "space-between",
-  },
-  image: {
-    resizeMode: "cover",
+    width: "100%",
+    height: "100%",
   },
   container: {
     flex: 1,
@@ -68,12 +66,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingTop: 100,
     paddingBottom: 40,
-  },
-  title: {
-    fontSize: 36,
-    fontWeight: "900",
-    color: "white",
-    letterSpacing: 0.5,
+    backgroundColor: "rgba(0,0,0,0.3)", // Add a slight dark overlay
   },
   cardContainer: {
     width: "100%",
@@ -91,14 +84,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
-    backdropFilter: "blur(10px)",
-  },
-  subtitle: {
-    fontSize: 28,
-    fontWeight: "700",
-    marginBottom: 24,
-    color: "#222",
-    textAlign: "center",
   },
   spotifyButton: {
     padding: 14,

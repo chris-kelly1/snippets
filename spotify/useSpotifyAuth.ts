@@ -1,4 +1,5 @@
 import {
+  exchangeCodeAsync,
   makeRedirectUri,
   ResponseType,
   useAuthRequest,
@@ -32,32 +33,67 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const { CLIENT_ID, SCOPES, SPOTIFY_API } = getEnv();
+  const { CLIENT_ID, CLIENT_SECRET, SCOPES, SPOTIFY_API } = getEnv();
 
+  // Get the app's scheme from app.json
+  const scheme = "snippets";
+
+  // Generate the appropriate redirect URI based on the environment
   const redirectUri = makeRedirectUri({
-    scheme: "snippets",
+    scheme,
     path: "auth",
+    preferLocalhost: true,
+    native: `${scheme}://auth`,
+  });
+
+  // Debug information
+  console.log("Auth Configuration:", {
+    clientId: CLIENT_ID,
+    redirectUri,
+    scopes: SCOPES,
+    scheme,
+    isDevelopment: __DEV__,
   });
 
   const [request, response, promptAsync] = useAuthRequest(
     {
-      responseType: ResponseType.Token,
+      responseType: ResponseType.Code,
       clientId: CLIENT_ID,
       scopes: SCOPES,
-      usePKCE: false,
-      redirectUri: redirectUri,
+      usePKCE: true,
+      redirectUri,
+      extraParams: {
+        show_dialog: "true",
+      },
     },
     SPOTIFY_API.DISCOVERY
   );
 
   useEffect(() => {
     if (response?.type === "success") {
-      const { access_token } = response.params;
-      setToken(access_token);
+      const { code } = response.params;
+      exchangeCodeAsync(
+        {
+          code,
+          clientId: CLIENT_ID,
+          clientSecret: CLIENT_SECRET,
+          redirectUri,
+        },
+        SPOTIFY_API.DISCOVERY
+      )
+        .then((tokenResponse) => {
+          setToken(tokenResponse.accessToken);
+        })
+        .catch((err) => {
+          setError(
+            err instanceof Error ? err : new Error("Token exchange failed")
+          );
+        });
     } else if (response?.type === "error") {
+      console.error("Auth Error:", response.error);
       setError(new Error(response.error?.message || "Authentication failed"));
     } else if (response?.type === "cancel") {
-      // Handle cancellation explicitly
+      console.log("Auth Cancelled");
       setError(new Error("Authentication was cancelled"));
     }
   }, [response]);
@@ -66,8 +102,10 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
     setIsLoading(true);
     setError(null);
     try {
+      console.log("Starting login process...");
       await promptAsync();
     } catch (err) {
+      console.error("Login Error:", err);
       setError(err instanceof Error ? err : new Error("Authentication failed"));
     } finally {
       setIsLoading(false);
