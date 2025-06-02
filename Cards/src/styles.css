@@ -1,0 +1,211 @@
+@font-face {
+  font-family: mainFont;
+  src: url(../public/Mine.ttf);
+}
+
+:root {
+  --gridBase: 3;
+  --cellSize: 90px;
+  --f900: clamp(20px, 3rem, 64px);
+  --f800: clamp(18px, 2rem, 24px);
+  --f600: clamp(12px, 0.8rem, 16px);
+  --f200: clamp(10px, 0.5rem, 14px);
+}
+
+@media screen and (max-width: 1280px) {
+  :root {
+    --gridBase: 3;
+    --cellSize: 80px;
+  }
+}
+@media screen and (max-width: 1110px) {
+  :root {
+    --gridBase: 3;
+    --cellSize: 90px;
+  }
+}
+@media screen and (max-width: 720px) {
+  :root {
+    --gridBase: 3;
+    --cellSize: 70px;
+  }
+}
+@media screen and (max-width: 520px) {
+  :root {
+    --gridBase: 1;
+    --cellSize: 280px;
+  }
+}
+
+* {
+  font-size: 1em;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  font-size: 2vw;
+  min-width: 320px;
+}
+
+.main {
+  font-family: mainFont, sans-serif;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #eeeeee;
+  text-align: left;
+  padding: 8px;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  padding: 0;
+}
+
+h1,
+h3 {
+  font-weight: 300;
+  font-size: var(--f800);
+  line-height: 100%;
+  letter-spacing: -0.01em;
+  font-feature-settings: "tnum" on, "onum" on, "zero" on, "ss03" on, "ss05" on;
+  color: #000000;
+  margin-bottom: 1em;
+}
+
+h2 {
+  font-weight: 800;
+  font-size: var(--f900);
+  line-height: 100%;
+  letter-spacing: -0.02em;
+  font-feature-settings: "tnum" on, "onum" on, "zero" on, "ss03" on, "ss05" on;
+  margin-bottom: 1.5em;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--cellSize), 1fr));
+  grid-gap: 12px;
+  grid-auto-flow: row dense;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1440px;
+}
+
+.tileWrapper {
+  position: relative;
+  padding-top: 100%;
+  overflow: hidden;
+  border-radius: 8px;
+  outline: none;
+}
+
+.tile {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 100%;
+  padding: 8px;
+  pointer-events: none;
+}
+
+@media screen and (max-width: 520px) {
+  .tileWrapper {
+    grid-row: span 1 !important;
+    grid-column: span 1 !important;
+  }
+}
+
+.header {
+  width: calc(100% - 16px);
+  max-width: 1440px;
+  height: clamp(400px, 50vmax, 680px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: var(--f800) 8px 0 8px;
+}
+
+.profile {
+  display: inline-block;
+  margin: 0 0.25em;
+  width: calc(1.2 * var(--f800));
+  height: calc(1.2 * var(--f800));
+  background: #161616;
+  background-image: url(profile.png);
+  background-size: calc(1.2 * var(--f800));
+  background-position: center center;
+  background-repeat: no-repeat;
+  vertical-align: middle;
+  border-radius: 100%;
+  overflow: visible;
+  transition: all 0.1s ease-in-out;
+  z-index: 2;
+  transform: translateY(-10%);
+}
+
+.profile:hover {
+  transform: translateY(-15%) scale(1.1);
+  background-size: calc(1.2 * var(--f800));
+}
+
+.caption {
+  position: absolute;
+  font-weight: 400;
+  font-size: var(--f600);
+  padding: var(--f600);
+  line-height: var(--f200);
+  align-items: center;
+  text-transform: uppercase;
+  color: hsl(0, 0%, 50%);
+  pointer-events: all;
+  letter-spacing: 0.05em;
+  z-index: 1;
+}
+
+.top {
+  top: 8px;
+  left: 8px;
+}
+
+.bot {
+  bottom: 8px;
+  right: 8px;
+}
+
+.view {
+  position: absolute;
+  top: 0px;
+  bottom: 0px;
+  left: 0px;
+  right: 0px;
+}
+
+.joystick {
+  position: absolute;
+  width: auto;
+  display: flex;
+  top: 50%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  font-size: 14px;
+  background: hsla(0, 0%, 0%, 0.2);
+  padding: 4px 8px;
+  border-radius: 100px;
+  font-weight: 300;
+  backdrop-filter: blur(32px);
+  color: white;
+  pointer-events: none;
+}

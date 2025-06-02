@@ -60,6 +60,7 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
     native: `${scheme}://auth`,
   });
 
+
   const [request, response, promptAsync] = useAuthRequest(
     {
       responseType: ResponseType.Code,
