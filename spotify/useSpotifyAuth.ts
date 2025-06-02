@@ -47,13 +47,6 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
   });
 
   // Debug information
-  console.log("Auth Configuration:", {
-    clientId: CLIENT_ID,
-    redirectUri,
-    scopes: SCOPES,
-    scheme,
-    isDevelopment: __DEV__,
-  });
 
   const [request, response, promptAsync] = useAuthRequest(
     {
