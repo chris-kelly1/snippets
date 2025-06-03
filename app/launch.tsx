@@ -75,10 +75,10 @@ const styles = StyleSheet.create({
     marginTop: "auto", // Push to bottom
   },
   card: {
-    width: 360,
+    width: "100%",
     borderRadius: 24,
     padding: 24,
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    backgroundColor: "transparent",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -86,9 +86,11 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   spotifyButton: {
-    padding: 14,
+    padding: 5,
     borderRadius: 50,
     backgroundColor: "#0D1117",
+    borderWidth: 1,
+    borderColor: "#95B3FF",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
