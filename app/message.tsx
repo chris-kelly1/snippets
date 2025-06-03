@@ -3,16 +3,17 @@ import { dummyConversations } from "@/data/conversations";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { MotiView } from "moti";
 import React, { useMemo, useState } from "react";
 import {
+  Dimensions,
   Image,
   StyleSheet,
   Text,
   TouchableOpacity,
   View
 } from "react-native";
-import { PanGestureHandler } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedGestureHandler, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { PanGestureHandler, State } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 // Extended type for the message screen
@@ -29,12 +30,248 @@ type ExtendedConversation = {
   members: { id: string; avatar: string }[];
 };
 
-const CARD_HEIGHT = 180;
-const CARD_WIDTH = '90%';
-const CARD_STACK_OFFSET = 18;
-const CARD_SCALE_STEP = 0.07;
+// Card type for the animated cards
+type CardData = {
+  title: string;
+  artist: string;
+  lyrics: string[];
+  albumCover: string;
+};
+
+type CardItem = {
+  id: string;
+  content: CardData;
+};
+
+type CardStackProps = {
+  cards: CardData[];
+};
+
+type AnimatedCardProps = {
+  i: number;
+  card: CardData;
+  length: number;
+  rotateArray: (n: number) => void;
+  current: number;
+};
+
+// Card animation constants
+const CARD_HEIGHT = 280;
+const CARD_WIDTH = Dimensions.get('window').width * 0.6;
 const VISIBLE_CARDS = 3;
-const CARD_OVERLAP = 20; // px
+
+// Create sample data for multiple cards
+const createCardData = (conversation: ExtendedConversation): CardData[] => {
+  const baseCard = {
+    title: conversation.currentSong.title,
+    artist: conversation.currentSong.artist,
+    lyrics: conversation.currentSong.lyrics,
+    albumCover: conversation.currentSong.albumCover,
+  };
+
+  // Create variations of the card with different lyrics
+  return [
+    baseCard,
+    {
+      ...baseCard,
+      lyrics: ["Different verse here", "Another line of music", "Keep the rhythm going"],
+      title: "Different Song"
+    },
+    {
+      ...baseCard,
+      lyrics: ["Third card lyrics", "Music keeps playing", "Dance to the beat"],
+      title: "Another Track"
+    },
+    {
+      ...baseCard,
+      lyrics: ["Fourth set of lyrics", "Never ending music", "Feel the vibe"],
+      title: "Next Song"
+    },
+    {
+      ...baseCard,
+      lyrics: ["Fifth card content", "Music flows through", "Keep it moving"],
+      title: "Last Track"
+    }
+  ];
+};
+
+// Mapping function to create duplicates with UIDs for continuous rotation
+const mapData = (data: CardData[], prefix: string): CardItem[] =>
+  data.map((item, i) => ({
+    id: `${prefix}${i}`,
+    content: item
+  }));
+
+const CardStack = ({ cards }: CardStackProps) => {
+  // Create multiple copies for seamless rotation (matching original logic)
+  const dataClone = [
+    ...mapData(cards, "1"), // Exit animations
+    ...mapData(cards, "2"), // Currently displayed
+    ...mapData(cards, "3"), // Initial animation
+    ...mapData(cards, "4")  // Avoid final->initial animation
+  ];
+
+  const [state, setState] = useState({ current: 0, arr: dataClone });
+  const length = cards.length;
+
+  // Function to rotate the array (directly from original)
+  const rotateArray = (n = 1) => {
+    const newArr = [...state.arr];
+    if (n > 0) {
+      for (let i = 0; i < n; i++) {
+        const first = newArr.shift();
+        if (first) newArr.push(first);
+      }
+      setState({ current: n, arr: newArr });
+    } else {
+      for (let i = 0; i < -n; i++) {
+        const last = newArr.pop();
+        if (last) newArr.unshift(last);
+      }
+      setState({ current: n, arr: newArr });
+    }
+  };
+
+  return (
+    <View style={styles.cardStackContainer}>
+      {state.arr.map(
+        (item, i) =>
+          // Render only first 3 copies (matching original logic)
+          i < length * 3 && (
+            <AnimatedCard
+              key={item.id}
+              i={i}
+              current={state.current}
+              card={item.content}
+              rotateArray={rotateArray}
+              length={length}
+            />
+          )
+      )}
+    </View>
+  );
+};
+
+const AnimatedCard = ({ i, card, length, rotateArray, current }: AnimatedCardProps) => {
+  // Helpers to determine card position (directly from original)
+  const isLeft = i < length;
+  const isFirst = i === length;
+  const isCenter = i > length && i <= length * 2 - 1;
+  const isRight = i > length * 2 - 1 && i < length * 3;
+
+  const iFromFirst = i - length;
+
+  // Calculate positions (adapted from original but simplified for React Native)
+  const getCardStyle = () => {
+    const leftOffset = -30; // Slight offset to move cards left
+    
+    if (isLeft) {
+      return {
+        translateX: -CARD_WIDTH * 1.5 + leftOffset,
+        translateY: 0,
+        scale: 0.8,
+        opacity: 0,
+        zIndex: 0,
+      };
+    } else if (isFirst) {
+      return {
+        translateX: 0 + leftOffset,
+        translateY: 0,
+        scale: 1,
+        opacity: 1,
+        zIndex: length,
+      };
+    } else if (isCenter) {
+      const offset = iFromFirst * 20;
+      return {
+        translateX: offset + leftOffset,
+        translateY: offset * 0.5,
+        scale: 1 - (iFromFirst * 0.05),
+        opacity: 1 - (iFromFirst * 0.2),
+        zIndex: length - iFromFirst,
+      };
+    } else if (isRight) {
+      return {
+        translateX: CARD_WIDTH * 1.5 + leftOffset,
+        translateY: 0,
+        scale: 0.8,
+        opacity: 0,
+        zIndex: 0,
+      };
+    }
+    
+    return { translateX: leftOffset, translateY: 0, scale: 1, opacity: 1, zIndex: 1 };
+  };
+
+  const cardStyle = getCardStyle();
+  
+  const handlePanEnd = (event: any) => {
+    if (!isFirst) return;
+
+    const { translationX, velocityX } = event.nativeEvent;
+    const minVelocity = Math.abs(velocityX) > 500;
+    const minDistance = Math.abs(translationX) > CARD_WIDTH * 0.3;
+    const direction = translationX > 0 ? -1 : 1;
+
+    if (minDistance && minVelocity) {
+      rotateArray(direction);
+    }
+  };
+
+  const handleTap = () => {
+    if (!isFirst) {
+      rotateArray(i - length);
+    }
+  };
+
+  return (
+    <PanGestureHandler
+      onHandlerStateChange={(event) => {
+        if (event.nativeEvent.state === State.END) {
+          handlePanEnd(event);
+        }
+      }}
+      enabled={isFirst}
+    >
+      <MotiView
+        style={[styles.animatedCard, { zIndex: cardStyle.zIndex }]}
+        animate={{
+          translateX: cardStyle.translateX,
+          translateY: cardStyle.translateY,
+          scale: cardStyle.scale,
+          opacity: cardStyle.opacity,
+        }}
+        transition={{
+          type: 'spring',
+          damping: 30,
+          stiffness: 300,
+          delay: (iFromFirst + current) * 25,
+        }}
+      >
+        <TouchableOpacity
+          style={styles.cardTouchable}
+          onPress={handleTap}
+          activeOpacity={0.9}
+        >
+          <View style={styles.cardContent}>
+            <View style={styles.cardInner}>
+              <Image source={{ uri: card.albumCover }} style={styles.albumCover} />
+              <View style={styles.lyricsContainer}>
+                <Text style={styles.songLyric}>{card.lyrics[0]}</Text>
+                <Text style={styles.songLyric}>{card.lyrics[1]}</Text>
+                <Text style={styles.songLyric}>{card.lyrics[2]}</Text>
+                <Text style={styles.songMeta}>{card.title} - {card.artist}</Text>
+              </View>
+              <View style={styles.pulseIconContainer}>
+                <Ionicons name="pulse" size={24} color={Colors.text.primary} style={styles.pulseIcon} />
+              </View>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </MotiView>
+    </PanGestureHandler>
+  );
+};
 
 export default function MessageScreen() {
   const router = useRouter();
@@ -106,77 +343,8 @@ export default function MessageScreen() {
     router.back();
   };
 
-  const cards = [
-    conversation.currentSong,
-    {
-      title: "Blinding Lights",
-      artist: "The Weeknd",
-      lyrics: [
-        "I said, ooh, I'm blinded by the lights",
-        "No, I can't sleep until I feel your touch",
-        "I said, ooh, I'm drowning in the night"
-      ],
-      albumCover: "https://upload.wikimedia.org/wikipedia/en/0/09/The_Weeknd_-_Blinding_Lights.png"
-    },
-    {
-      title: "Body On The Floor",
-      artist: "Junior Jack, Maddy O'Neal",
-      lyrics: [
-        "Thank you everyone for stepping out tonight",
-        "Move your body, move your body",
-        "Move your body, move your body"
-      ],
-      albumCover: "https://upload.wikimedia.org/wikipedia/en/6/6a/Junior_Jack_-_Trust_It.png"
-    }
-  ];
-
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const transition = useSharedValue(0);
-
-  // Gesture handler
-  const gestureHandler = useAnimatedGestureHandler({
-    onActive: (event) => {
-      transition.value = event.translationY;
-    },
-    onEnd: (event) => {
-      if (event.translationY < -50 && currentIndex < cards.length - 1) {
-        runOnJS(setCurrentIndex)(currentIndex + 1);
-      } else if (event.translationY > 50 && currentIndex > 0) {
-        runOnJS(setCurrentIndex)(currentIndex - 1);
-      }
-      transition.value = withSpring(0);
-    },
-  });
-
-  // Always call VISIBLE_CARDS hooks and render VISIBLE_CARDS slots
-  const animatedStyles = Array(VISIBLE_CARDS).fill(0).map((_, i) =>
-    useAnimatedStyle(() => {
-      const scale = 1 - i * CARD_SCALE_STEP;
-      // Offset so the focused card is always centered, and others are stacked upward
-      const translateY = -i * CARD_OVERLAP;
-      let y = 0;
-      if (i === 0) {
-        y = transition.value;
-      }
-      return {
-        position: 'absolute',
-        alignSelf: 'center',
-        transform: [
-          { translateY: y + translateY },
-          { scale },
-        ],
-        zIndex: VISIBLE_CARDS - i,
-        opacity: 1 - i * 0.12,
-      };
-    })
-  );
-
-  // Always render VISIBLE_CARDS slots
-  const visibleCards = [];
-  for (let i = 0; i < VISIBLE_CARDS; i++) {
-    const card = cards[currentIndex + i];
-    visibleCards.push(card || null);
-  }
+  // Create card data
+  const cards = useMemo(() => createCardData(conversation), [conversation]);
 
   return (
     <View style={styles.container}>
@@ -219,50 +387,8 @@ export default function MessageScreen() {
             </View>
           </View>
 
-          {/* Card Stack */}
-          <View style={{ height: 260, alignItems: 'center', justifyContent: 'center', marginBottom: 32, position: 'relative' }}>
-            {visibleCards.map((card, i) => {
-              if (!card) return null;
-              if (i === 0) {
-                // Only top card is interactive
-                return (
-                  <PanGestureHandler
-                    key={currentIndex + i}
-                    onGestureEvent={gestureHandler}
-                  >
-                    <Animated.View style={[styles.mockupCard, animatedStyles[i]]}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Image source={{ uri: card.albumCover }} style={styles.mockupAlbumCover} />
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                          <Text style={styles.mockupSongTitle}>{card.lyrics[0]}</Text>
-                          <Text style={styles.mockupSongSubtitle}>{card.lyrics[1]}</Text>
-                          <Text style={styles.mockupSongSubtitle}>{card.lyrics[2]}</Text>
-                          <Text style={styles.mockupSongMeta}>{card.title} - {card.artist}</Text>
-                        </View>
-                        <Ionicons name="pulse" size={24} color={Colors.text.primary} style={{ marginLeft: 8 }} />
-                      </View>
-                    </Animated.View>
-                  </PanGestureHandler>
-                );
-              } else {
-                // Non-top cards are not interactive
-                return (
-                  <Animated.View key={currentIndex + i} style={[styles.mockupCard, animatedStyles[i]]}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Image source={{ uri: card.albumCover }} style={styles.mockupAlbumCover} />
-                      <View style={{ flex: 1, marginLeft: 12 }}>
-                        <Text style={styles.mockupSongTitle}>{card.lyrics[0]}</Text>
-                        <Text style={styles.mockupSongSubtitle}>{card.lyrics[1]}</Text>
-                        <Text style={styles.mockupSongSubtitle}>{card.lyrics[2]}</Text>
-                        <Text style={styles.mockupSongMeta}>{card.title} - {card.artist}</Text>
-                      </View>
-                      <Ionicons name="pulse" size={24} color={Colors.text.primary} style={{ marginLeft: 8 }} />
-                    </View>
-                  </Animated.View>
-                );
-              }
-            })}
-          </View>
+          {/* Animated Card Stack */}
+          <CardStack cards={cards} />
         </View>
 
         {/* Bottom user list */}
@@ -356,9 +482,27 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
-  mockupCard: {
-    width: '90%',
+  cardStackContainer: {
+    height: 320,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 32,
+    position: 'relative',
+    overflow: 'visible',
+  },
+  animatedCard: {
+    position: 'absolute',
+    width: CARD_WIDTH,
     height: CARD_HEIGHT,
+  },
+  cardTouchable: {
+    width: '100%',
+    height: '100%',
+  },
+  cardContent: {
+    width: '100%',
+    height: '100%',
     backgroundColor: '#222',
     borderRadius: 24,
     borderWidth: 2,
@@ -368,31 +512,47 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 16,
     elevation: 8,
+    overflow: 'hidden',
+  },
+  cardInner: {
+    flexDirection: 'column',
+    alignItems: 'center',
     padding: 20,
-    marginBottom: 0,
+    height: '100%',
+    justifyContent: 'space-between',
+  },
+  albumCover: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  lyricsContainer: {
+    flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 8,
   },
-  mockupAlbumCover: {
-    width: 48,
-    height: 48,
-    borderRadius: 8,
-    marginRight: 8,
-  },
-  mockupSongTitle: {
+  songLyric: {
     color: '#7EB6FF',
     fontWeight: 'bold',
-    fontSize: 18,
-    marginBottom: 2,
+    fontSize: 16,
+    marginBottom: 4,
+    textAlign: 'center',
+    lineHeight: 20,
   },
-  mockupSongSubtitle: {
-    color: '#bbb',
-    fontSize: 15,
-    marginBottom: 1,
-  },
-  mockupSongMeta: {
+  songMeta: {
     color: '#aaa',
     fontSize: 12,
-    marginTop: 4,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  pulseIconContainer: {
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  pulseIcon: {
+    marginLeft: 0,
   },
   bottomContainer: {
     paddingVertical: Spacing.md,
