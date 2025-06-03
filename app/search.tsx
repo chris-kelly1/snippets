@@ -35,6 +35,7 @@ interface LyricMatch {
 interface SearchResult {
   song_info: SongInfo;
   matches: LyricMatch[];
+  snippetUrl?: string;
 }
 
 export default function SearchScreen() {
@@ -44,6 +45,9 @@ export default function SearchScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [displayQuery, setDisplayQuery] = useState("");
+  const [downloadingSnippets, setDownloadingSnippets] = useState<{
+    [key: number]: boolean;
+  }>({});
   const { token } = useSpotifyAuth();
 
   const handleBackPress = () => {
@@ -141,6 +145,57 @@ export default function SearchScreen() {
     }
   };
 
+  const handleDownloadSnippet = async (result: SearchResult) => {
+    if (!result.matches || result.matches.length === 0) return;
+
+    const match = result.matches[0];
+    setDownloadingSnippets((prev) => ({
+      ...prev,
+      [result.song_info.id]: true,
+    }));
+
+    try {
+      const response = await fetch("http://localhost:8000/download-snippets", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          song_id: result.song_info.id,
+          song_title: result.song_info.title,
+          artist: result.song_info.artist,
+          lyric_text: match.text,
+          timestamp: match.timestamp,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Update the search results with the snippet URL
+        setSearchResults((prevResults) =>
+          prevResults.map((r) =>
+            r.song_info.id === result.song_info.id
+              ? { ...r, snippetUrl: data.snippet.url }
+              : r
+          )
+        );
+      }
+    } catch (error) {
+      console.error("Error downloading snippet:", error);
+    } finally {
+      setDownloadingSnippets((prev) => ({
+        ...prev,
+        [result.song_info.id]: false,
+      }));
+    }
+  };
+
   const renderSearchResults = () => {
     console.log("Rendering results, count:", searchResults.length);
 
@@ -164,6 +219,19 @@ export default function SearchScreen() {
       console.log("Rendering result:", result.song_info.title);
       return (
         <View key={result.song_info.id} style={styles.resultCard}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => handleDownloadSnippet(result)}
+            disabled={downloadingSnippets[result.song_info.id]}
+          >
+            {downloadingSnippets[result.song_info.id] ? (
+              <ActivityIndicator size="small" color={Colors.text.primary} />
+            ) : result.snippetUrl ? (
+              <Ionicons name="play" size={24} color={Colors.text.primary} />
+            ) : (
+              <Ionicons name="download" size={24} color={Colors.text.primary} />
+            )}
+          </TouchableOpacity>
           <Image
             source={
               result.song_info.albumArt
@@ -392,5 +460,12 @@ const styles = StyleSheet.create({
   },
   clearButton: {
     padding: Spacing.xs,
+  },
+  actionButton: {
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: Spacing.sm,
   },
 });
