@@ -311,6 +311,7 @@ export default function SearchScreen() {
       if (data && Array.isArray(data)) {
         // If we have a Spotify token, fetch album art for each result
         if (token) {
+          console.log("Spotify token available, fetching album art...");
           const resultsWithAlbumArt = await Promise.all(
             data.map(async (result) => {
               try {
@@ -326,14 +327,28 @@ export default function SearchScreen() {
                     albumArt,
                   },
                 };
-              } catch (error) {
-                console.error("Error fetching album art:", error);
+              } catch (error: any) {
+                console.error(
+                  "Error fetching album art for:",
+                  result.song_info.title,
+                  error
+                );
+                // If it's a 401 error, log additional info about the token
+                if (error?.response?.status === 401) {
+                  console.error(
+                    "Spotify token appears to be expired or invalid"
+                  );
+                  console.error("Token exists:", !!token);
+                  console.error("Token length:", token?.length);
+                }
+                // Return the original result without album art
                 return result;
               }
             })
           );
           setSearchResults(resultsWithAlbumArt);
         } else {
+          console.log("No Spotify token available, skipping album art fetch");
           setSearchResults(data);
         }
         console.log("Set search results:", data.length, "items");
@@ -392,6 +407,32 @@ export default function SearchScreen() {
                 ...<Text style={styles.highlightedText}>{searchQuery}</Text>
                 {result.matches[0].text.replace(searchQuery, "")}
               </Text>
+            )}
+          </View>
+          <View style={styles.actionButtons}>
+            {result.snippetUrl ? (
+              <SnippetPlayer
+                result={result}
+                isPlaying={playingSnippet === result.song_info.id}
+                onPlay={() => setPlayingSnippet(result.song_info.id)}
+                onPause={() => setPlayingSnippet(null)}
+              />
+            ) : (
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => handleDownloadSnippet(result)}
+                disabled={downloadingSnippets[result.song_info.id]}
+              >
+                {downloadingSnippets[result.song_info.id] ? (
+                  <ActivityIndicator size="small" color={Colors.text.primary} />
+                ) : (
+                  <Ionicons
+                    name="download"
+                    size={24}
+                    color={Colors.text.primary}
+                  />
+                )}
+              </TouchableOpacity>
             )}
           </View>
         </View>
@@ -577,5 +618,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginRight: Spacing.sm,
+  },
+  actionButtons: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: Spacing.sm,
   },
 });
