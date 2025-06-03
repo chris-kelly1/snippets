@@ -36,7 +36,21 @@ export default function Home() {
       }
     };
 
+    // Initial update
     updateProfileImage();
+
+    // Set up an interval to check for updates
+    const intervalId = setInterval(updateProfileImage, 1000);
+
+    // Cleanup interval on unmount
+    return () => clearInterval(intervalId);
+  }, []);
+
+  // Also update when user data changes in the hook
+  useEffect(() => {
+    if (user?.profile_image) {
+      setProfileImageUrl(user.profile_image);
+    }
   }, [user?.profile_image]);
 
   // Refresh user data when the home page mounts

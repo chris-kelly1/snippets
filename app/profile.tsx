@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  ImageBackground,
   ScrollView,
   StyleSheet,
   Text,
@@ -150,105 +151,120 @@ export default function ProfileScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="chevron-back" size={24} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Profile</Text>
-      </View>
-
-      <ScrollView style={styles.scrollView}>
-        <View style={styles.profileSection}>
-          <View style={styles.profileHeader}>
-            <TouchableOpacity
-              style={styles.avatarContainer}
-              onPress={handleImagePick}
-              disabled={isUpdating}
-            >
-              {user?.profile_image ? (
-                <Image
-                  source={{ uri: user.profile_image }}
-                  style={styles.avatar}
-                  onError={(error) => {
-                    console.error("Image loading error:", error.nativeEvent);
-                  }}
-                  onLoad={() => {
-                    console.log(
-                      "Image loaded successfully:",
-                      user.profile_image
-                    );
-                  }}
-                />
-              ) : (
-                <Text style={styles.avatarText}>
-                  {user?.display_name?.[0]?.toUpperCase() || "?"}
-                </Text>
-              )}
-              {isUpdating && (
-                <View style={styles.uploadingOverlay}>
-                  <ActivityIndicator color="#fff" />
-                </View>
-              )}
-            </TouchableOpacity>
-
-            {isEditing ? (
-              <View style={styles.editNameContainer}>
-                <TextInput
-                  style={styles.nameInput}
-                  value={newDisplayName}
-                  onChangeText={setNewDisplayName}
-                  placeholder="Enter display name"
-                  placeholderTextColor="#666"
-                />
-                <View style={styles.editButtons}>
-                  <TouchableOpacity
-                    style={[styles.editButton, styles.cancelButton]}
-                    onPress={() => {
-                      setIsEditing(false);
-                      setNewDisplayName(user?.display_name || "");
-                    }}
-                  >
-                    <Text style={styles.editButtonText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.editButton, styles.saveButton]}
-                    onPress={handleUpdateProfile}
-                    disabled={isUpdating}
-                  >
-                    <Text style={styles.editButtonText}>Save</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <TouchableOpacity
-                onPress={() => setIsEditing(true)}
-                style={styles.nameContainer}
-              >
-                <Text style={styles.userName}>{user?.display_name}</Text>
-                <Ionicons name="pencil" size={16} color="#b3b3b3" />
-              </TouchableOpacity>
-            )}
-
-            <Text style={styles.userEmail}>{user?.email}</Text>
-          </View>
-
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Text style={styles.logoutButtonText}>Logout</Text>
+    <ImageBackground
+      source={require("../assets/images/launch-screen.png")}
+      style={styles.container}
+      imageStyle={styles.backgroundImage}
+    >
+      <View style={styles.overlay}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Ionicons name="chevron-back" size={24} color="#fff" />
           </TouchableOpacity>
+          <Text style={styles.headerTitle}>Profile</Text>
         </View>
-      </ScrollView>
-    </View>
+
+        <ScrollView style={styles.scrollView}>
+          <View style={styles.profileSection}>
+            <View style={styles.profileHeader}>
+              <TouchableOpacity
+                style={styles.avatarContainer}
+                onPress={handleImagePick}
+                disabled={isUpdating}
+              >
+                {user?.profile_image ? (
+                  <Image
+                    source={{ uri: user.profile_image }}
+                    style={styles.avatar}
+                    onError={(error) => {
+                      console.error("Image loading error:", error.nativeEvent);
+                    }}
+                    onLoad={() => {
+                      console.log(
+                        "Image loaded successfully:",
+                        user.profile_image
+                      );
+                    }}
+                  />
+                ) : (
+                  <Text style={styles.avatarText}>
+                    {user?.display_name?.[0]?.toUpperCase() || "?"}
+                  </Text>
+                )}
+                {isUpdating && (
+                  <View style={styles.uploadingOverlay}>
+                    <ActivityIndicator color="#fff" />
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              {isEditing ? (
+                <View style={styles.editNameContainer}>
+                  <TextInput
+                    style={styles.nameInput}
+                    value={newDisplayName}
+                    onChangeText={setNewDisplayName}
+                    placeholder="Enter Username"
+                    placeholderTextColor="#666"
+                  />
+                  <View style={styles.editButtons}>
+                    <TouchableOpacity
+                      style={[styles.editButton, styles.cancelButton]}
+                      onPress={() => {
+                        setIsEditing(false);
+                        setNewDisplayName(user?.display_name || "");
+                      }}
+                    >
+                      <Text style={styles.editButtonText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.editButton, styles.saveButton]}
+                      onPress={handleUpdateProfile}
+                      disabled={isUpdating}
+                    >
+                      <Text style={styles.editButtonText}>Save</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  onPress={() => setIsEditing(true)}
+                  style={styles.nameContainer}
+                >
+                  <Text style={styles.userName}>{user?.display_name}</Text>
+                  <Ionicons name="pencil" size={16} color="#b3b3b3" />
+                </TouchableOpacity>
+              )}
+
+              <Text style={styles.userEmail}>{user?.email}</Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.logoutButton}
+              onPress={handleLogout}
+            >
+              <Text style={styles.logoutButtonText}>Logout</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#121212",
+  },
+  backgroundImage: {
+    opacity: 0.3,
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
   },
   scrollView: {
     flex: 1,
@@ -372,7 +388,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#666",
   },
   saveButton: {
-    backgroundColor: "#1DB954",
+    backgroundColor: "#95B3FF",
   },
   editButtonText: {
     color: "#fff",
@@ -380,15 +396,25 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   logoutButton: {
-    backgroundColor: "#ff4444",
+    backgroundColor: "#95B3FF",
     padding: 16,
-    borderRadius: 8,
+    borderRadius: 25,
     alignItems: "center",
     marginTop: 20,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   logoutButtonText: {
     color: "#fff",
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 1,
   },
 });
