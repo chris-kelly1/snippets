@@ -57,23 +57,53 @@ function SnippetPlayer({
     : undefined;
   const player = useAudioPlayer(urlWithKey ? { uri: urlWithKey } : undefined);
   const status = useAudioPlayerStatus(player);
+  const [isPlayerReady, setIsPlayerReady] = useState(false);
+
+  // Handle player initialization and cleanup
+  useEffect(() => {
+    if (player) {
+      setIsPlayerReady(true);
+      return () => {
+        try {
+          player.pause();
+          player.remove();
+        } catch (error) {
+          console.log("Error cleaning up player:", error);
+        }
+        setIsPlayerReady(false);
+      };
+    }
+  }, [player]);
 
   // Play/pause logic
   useEffect(() => {
-    if (isPlaying) {
-      player.play();
-    } else {
-      player.pause();
+    if (!player || !isPlayerReady) return;
+
+    try {
+      if (isPlaying) {
+        player.play();
+      } else {
+        player.pause();
+      }
+    } catch (error) {
+      console.log("Error controlling playback:", error);
+      onPause(); // Reset state if there's an error
     }
-  }, [isPlaying]);
+  }, [isPlaying, player, isPlayerReady]);
 
   // When playback finishes, notify parent
   useEffect(() => {
-    if (status?.didJustFinish) {
+    if (status?.didJustFinish && player && isPlayerReady) {
+      try {
+        player.pause();
+        player.remove();
+      } catch (error) {
+        console.log("Error cleaning up finished player:", error);
+      }
       onPause();
-      player.remove();
+      setIsPlayerReady(false);
     }
-  }, [status?.didJustFinish]);
+  }, [status?.didJustFinish, player, isPlayerReady]);
 
   return (
     <TouchableOpacity
@@ -85,7 +115,7 @@ function SnippetPlayer({
           onPlay();
         }
       }}
-      disabled={!result.snippetUrl}
+      disabled={!result.snippetUrl || !isPlayerReady}
     >
       <Ionicons
         name={isPlaying ? "pause" : "play"}
