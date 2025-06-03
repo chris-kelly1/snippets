@@ -7,6 +7,7 @@ import {
 } from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import { useEffect, useState } from "react";
+import { supabase } from "../lib/supabase";
 import getEnv from "./env";
 
 // needed so that the browser closes the modal after auth token
@@ -25,6 +26,7 @@ interface SpotifyUser {
   display_name: string;
   email: string;
   id?: string;
+  profile_image?: string;
 }
 
 interface UseSpotifyAuthReturn {
@@ -34,6 +36,7 @@ interface UseSpotifyAuthReturn {
   error: Error | null;
   login: () => Promise<void>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 const STORAGE_KEYS = {
@@ -59,7 +62,6 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
     preferLocalhost: true,
     native: `${scheme}://auth`,
   });
-
 
   const [request, response, promptAsync] = useAuthRequest(
     {
@@ -112,7 +114,21 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
             display_name: userData.display_name,
             email: userData.email,
             id: userData.id,
+            profile_image:
+              userData.images?.length > 0 ? userData.images[0].url : undefined,
           };
+
+          // Insert or update user in Supabase
+          const { error: supabaseError } = await supabase.from("users").upsert({
+            id: spotifyUser.id,
+            display_name: spotifyUser.display_name,
+            email: spotifyUser.email,
+            profile_image: spotifyUser.profile_image,
+          });
+
+          if (supabaseError) {
+            console.error("Error saving user to Supabase:", supabaseError);
+          }
 
           // Set both token and user data together
           setToken(tokenResponse.accessToken);
@@ -181,6 +197,44 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
     loadPersistedAuth();
   }, []);
 
+  // Helper function to fetch user from Supabase
+  const fetchUserFromSupabase = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", userId)
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error("Error fetching user from Supabase:", error);
+      return null;
+    }
+  };
+
+  const refreshUser = async () => {
+    if (!user?.id) return; // Only refresh if user ID is available
+    setIsLoading(true);
+    try {
+      const updatedUser = await fetchUserFromSupabase(user.id);
+      if (updatedUser) {
+        console.log("Fetched updated user data:", updatedUser);
+        setUser(updatedUser);
+        // Optionally update AsyncStorage as well
+        await AsyncStorage.setItem(
+          STORAGE_KEYS.USER,
+          JSON.stringify(updatedUser)
+        );
+      }
+    } catch (err) {
+      console.error("Error refreshing user data:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const login = async (): Promise<void> => {
     setIsLoading(true);
     setError(null);
@@ -219,6 +273,7 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
     error,
     login,
     logout,
+    refreshUser,
   };
 };
 

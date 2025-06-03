@@ -1,6 +1,6 @@
 import { Colors, FontSizes, FontWeights, Spacing } from "@/constants/theme";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useState } from "react";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 type HeaderProps = {
@@ -9,6 +9,8 @@ type HeaderProps = {
 
 export const Header = ({ profileImageUrl }: HeaderProps) => {
   const router = useRouter();
+  const [imageError, setImageError] = useState(false);
+  const defaultImage = "https://api.dicebear.com/7.x/avataaars/png?seed=Calvin";
 
   return (
     <View style={styles.header}>
@@ -19,7 +21,18 @@ export const Header = ({ profileImageUrl }: HeaderProps) => {
         }
         style={styles.profileContainer}
       >
-        <Image source={{ uri: profileImageUrl }} style={styles.profilePic} />
+        <Image
+          source={{ uri: imageError ? defaultImage : profileImageUrl }}
+          style={styles.profilePic}
+          onError={(error) => {
+            console.error("Profile image loading error:", error.nativeEvent);
+            setImageError(true);
+          }}
+          onLoad={() => {
+            console.log("Profile image loaded successfully");
+            setImageError(false);
+          }}
+        />
       </TouchableOpacity>
     </View>
   );

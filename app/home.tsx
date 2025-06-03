@@ -3,16 +3,46 @@ import { ConversationList } from "@/components/conversations/ConversationList";
 import { Header } from "@/components/conversations/Header";
 import { Colors } from "@/constants/theme";
 import { dummyConversations } from "@/data/conversations";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import useSpotifyAuth from "../spotify/useSpotifyAuth";
 
 export default function Home() {
-  const profileImageUrl =
-    "https://api.dicebear.com/7.x/avataaars/png?seed=Calvin";
+  const { user, refreshUser } = useSpotifyAuth();
+  const [profileImageUrl, setProfileImageUrl] = useState(
+    user?.profile_image ||
+      "https://api.dicebear.com/7.x/avataaars/png?seed=Calvin"
+  );
   const router = useRouter();
+
+  // Update profile image whenever user data changes
+  useEffect(() => {
+    const updateProfileImage = async () => {
+      try {
+        // Get the latest user data from AsyncStorage
+        const storedUser = await AsyncStorage.getItem("@spotify_user");
+        if (storedUser) {
+          const parsedUser = JSON.parse(storedUser);
+          if (parsedUser.profile_image) {
+            setProfileImageUrl(parsedUser.profile_image);
+          }
+        }
+      } catch (error) {
+        console.error("Error updating profile image:", error);
+      }
+    };
+
+    updateProfileImage();
+  }, [user?.profile_image]);
+
+  // Refresh user data when the home page mounts
+  useEffect(() => {
+    refreshUser();
+  }, []);
 
   return (
     <View style={styles.container}>
