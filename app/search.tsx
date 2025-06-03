@@ -3,9 +3,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { useEffect, useRef, useState }, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   ActivityIndicator,
   Image,
   StyleSheet,
@@ -126,8 +125,6 @@ function SnippetPlayer({
     </TouchableOpacity>
   );
 }
-import { searchSongs } from "../spotify/apiOptions";
-import useSpotifyAuth from "../spotify/useSpotifyAuth";
 
 interface SongInfo {
   id: number;
@@ -152,16 +149,11 @@ interface SearchResult {
 
 export default function SearchScreen() {
   const router = useRouter();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
   const [displayQuery, setDisplayQuery] = useState("");
   const [downloadingSnippets, setDownloadingSnippets] = useState<{
     [key: number]: boolean;
   }>({});
   const [playingSnippet, setPlayingSnippet] = useState<number | null>(null);
-  const { token } = useSpotifyAuth();
 
   // Store player instances by song id
   const playersRef = useRef<{
@@ -182,97 +174,6 @@ export default function SearchScreen() {
 
   const handleBackPress = () => {
     router.back();
-  };
-
-  const handleClear = () => {
-    setSearchQuery("");
-    setDisplayQuery("");
-    setSearchResults([]);
-    setHasSearched(false);
-  };
-
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    setHasSearched(true);
-    setIsLoading(true);
-    setDisplayQuery(searchQuery);
-    try {
-      console.log("Making request to:", "http://127.0.0.1:8000/search-lyrics");
-      console.log("With query:", searchQuery);
-
-      const response = await fetch("http://127.0.0.1:8000/search-lyrics", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          query: searchQuery,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Search failed with status:", response.status);
-        console.error("Error response:", errorText);
-        throw new Error(`Search failed: ${response.status} ${errorText}`);
-      }
-
-      const data = await response.json();
-      console.log("Search response:", JSON.stringify(data, null, 2));
-
-      if (data && Array.isArray(data)) {
-        // Filter out results with no matches
-        const filteredData = data.filter(
-          (result) => result.matches && result.matches.length > 0
-        );
-
-        // If we have a Spotify token, fetch album art for each result
-        if (token) {
-          const resultsWithAlbumArt = await Promise.all(
-            filteredData.map(async (result) => {
-              try {
-                const spotifyResults = await searchSongs(
-                  `${result.song_info.title} ${result.song_info.artist}`,
-                  token
-                );
-                const albumArt = spotifyResults[0]?.imageUrl;
-                return {
-                  ...result,
-                  song_info: {
-                    ...result.song_info,
-                    albumArt,
-                  },
-                };
-              } catch (error) {
-                console.error("Error fetching album art:", error);
-                return result;
-              }
-            })
-          );
-          setSearchResults(resultsWithAlbumArt);
-        } else {
-          setSearchResults(filteredData);
-        }
-        console.log("Set search results:", filteredData.length, "items");
-      } else {
-        console.error("Unexpected response format:", data);
-        setSearchResults([]);
-      }
-    } catch (error: any) {
-      console.error("Search error details:", {
-        message: error?.message,
-        name: error?.name,
-        stack: error?.stack,
-      });
-      setSearchResults([]);
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   const handleDownloadSnippet = async (result: SearchResult) => {
@@ -331,89 +232,6 @@ export default function SearchScreen() {
         [result.song_info.id]: false,
       }));
     }
-  };
-
-  const renderSearchResults = () => {
-    console.log("Rendering results, count:", searchResults.length);
-    console.log(
-      "Current search results:",
-      JSON.stringify(searchResults, null, 2)
-    );
-
-    if (isLoading) {
-      return (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.text.primary} />
-        </View>
-      );
-    }
-
-    if (searchResults.length === 0 && displayQuery) {
-      return (
-        <View style={styles.noResultsContainer}>
-          <Text style={styles.noResultsText}>No results found</Text>
-        </View>
-      );
-    }
-
-    return searchResults.map((result) => {
-      const isDownloading = downloadingSnippets[result.song_info.id];
-      const isPlaying = playingSnippet === result.song_info.id;
-      const hasSnippet = result.snippetUrl !== undefined;
-
-      console.log(`Rendering result for ${result.song_info.title}:`, {
-        isDownloading,
-        isPlaying,
-        hasSnippet,
-        snippetUrl: result.snippetUrl,
-      });
-
-      return (
-        <View key={result.song_info.id} style={styles.resultCard}>
-          {hasSnippet ? (
-            <SnippetPlayer
-              result={result}
-              isPlaying={isPlaying}
-              onPlay={() => setPlayingSnippet(result.song_info.id)}
-              onPause={() => setPlayingSnippet(null)}
-            />
-          ) : (
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => handleDownloadSnippet(result)}
-              disabled={isDownloading}
-            >
-              {isDownloading ? (
-                <ActivityIndicator size="small" color={Colors.text.primary} />
-              ) : (
-                <Ionicons
-                  name="download"
-                  size={24}
-                  color={Colors.text.primary}
-                />
-              )}
-            </TouchableOpacity>
-          )}
-          <Image
-            source={
-              result.song_info.albumArt
-                ? { uri: result.song_info.albumArt }
-                : { uri: result.song_info.url }
-            }
-            style={styles.albumCover}
-          />
-          <View style={styles.songInfo}>
-            <Text style={styles.songTitle}>{result.song_info.title}</Text>
-            <Text style={styles.artistName}>{result.song_info.artist}</Text>
-            {result.matches && result.matches[0] && (
-              <Text style={styles.lyricMatch}>
-                {formatLyricMatch(result.matches[0].text, displayQuery)}
-              </Text>
-            )}
-          </View>
-        </View>
-      );
-    });
   };
 
   const formatLyricMatch = (text: string, query: string) => {
@@ -759,24 +577,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginRight: Spacing.sm,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: Spacing.xl,
-  },
-  noResultsContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: Spacing.xl,
-  },
-  noResultsText: {
-    color: Colors.text.secondary,
-    fontSize: FontSizes.md,
-  },
-  clearButton: {
-    padding: Spacing.xs,
   },
 });
