@@ -3,11 +3,12 @@ import { ConversationList } from "@/components/conversations/ConversationList";
 import { Header } from "@/components/conversations/Header";
 import { Colors } from "@/constants/theme";
 import { dummyConversations } from "@/data/conversations";
+import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import useSpotifyAuth from "../spotify/useSpotifyAuth";
 
@@ -76,6 +77,16 @@ export default function Home() {
           <ConversationList conversations={dummyConversations} />
         </View>
       </SafeAreaView>
+
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => {
+          // Add your action here
+          console.log("FAB pressed");
+        }}
+      >
+        <Ionicons name="add" size={32} color="#fff" weight="bold" />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -110,5 +121,24 @@ const styles = StyleSheet.create({
   },
   profileButton: {
     padding: 8,
+  },
+  fab: {
+    position: "absolute",
+    right: 25,
+    bottom: 25,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#95B3FF",
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
 });
