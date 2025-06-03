@@ -1,8 +1,9 @@
 import { Colors, FontSizes, FontWeights, Spacing } from "@/constants/theme";
 import { Ionicons } from "@expo/vector-icons";
+import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -14,6 +15,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { searchSongs } from "../spotify/apiOptions";
+import getEnv from "../spotify/env";
 import useSpotifyAuth from "../spotify/useSpotifyAuth";
 
 interface SongInfo {
@@ -38,6 +40,62 @@ interface SearchResult {
   snippetUrl?: string;
 }
 
+function SnippetPlayer({
+  result,
+  isPlaying,
+  onPlay,
+  onPause,
+}: {
+  result: SearchResult;
+  isPlaying: boolean;
+  onPlay: () => void;
+  onPause: () => void;
+}) {
+  const env = getEnv();
+  const urlWithKey = result.snippetUrl
+    ? `${result.snippetUrl}?apikey=${env.SUPABASE_ANON_KEY}`
+    : undefined;
+  const player = useAudioPlayer(urlWithKey ? { uri: urlWithKey } : undefined);
+  const status = useAudioPlayerStatus(player);
+
+  // Play/pause logic
+  useEffect(() => {
+    if (isPlaying) {
+      player.play();
+    } else {
+      player.pause();
+    }
+  }, [isPlaying]);
+
+  // When playback finishes, notify parent
+  useEffect(() => {
+    if (status?.didJustFinish) {
+      onPause();
+      player.remove();
+    }
+  }, [status?.didJustFinish]);
+
+  return (
+    <TouchableOpacity
+      style={styles.actionButton}
+      onPress={() => {
+        if (isPlaying) {
+          onPause();
+        } else {
+          onPlay();
+        }
+      }}
+      disabled={!result.snippetUrl}
+    >
+      <Ionicons
+        name={isPlaying ? "pause" : "play"}
+        size={24}
+        color={Colors.text.primary}
+      />
+    </TouchableOpacity>
+  );
+}
+
 export default function SearchScreen() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
@@ -48,7 +106,20 @@ export default function SearchScreen() {
   const [downloadingSnippets, setDownloadingSnippets] = useState<{
     [key: number]: boolean;
   }>({});
+  const [playingSnippet, setPlayingSnippet] = useState<number | null>(null);
   const { token } = useSpotifyAuth();
+
+  // Store player instances by song id
+  const playersRef = useRef<{
+    [id: number]: ReturnType<typeof useAudioPlayer>;
+  }>({});
+
+  // Clean up all players on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(playersRef.current).forEach((player) => player.remove());
+    };
+  }, []);
 
   const handleBackPress = () => {
     router.back();
@@ -175,16 +246,23 @@ export default function SearchScreen() {
       }
 
       const data = await response.json();
+      console.log("Download response:", JSON.stringify(data, null, 2));
 
       if (data.success) {
+        console.log("Setting snippet URL:", data.snippet.url);
         // Update the search results with the snippet URL
-        setSearchResults((prevResults) =>
-          prevResults.map((r) =>
+        setSearchResults((prevResults) => {
+          const newResults = prevResults.map((r) =>
             r.song_info.id === result.song_info.id
               ? { ...r, snippetUrl: data.snippet.url }
               : r
-          )
-        );
+          );
+          console.log(
+            "Updated search results:",
+            JSON.stringify(newResults, null, 2)
+          );
+          return newResults;
+        });
       }
     } catch (error) {
       console.error("Error downloading snippet:", error);
@@ -198,6 +276,10 @@ export default function SearchScreen() {
 
   const renderSearchResults = () => {
     console.log("Rendering results, count:", searchResults.length);
+    console.log(
+      "Current search results:",
+      JSON.stringify(searchResults, null, 2)
+    );
 
     if (isLoading) {
       return (
@@ -216,22 +298,43 @@ export default function SearchScreen() {
     }
 
     return searchResults.map((result) => {
-      console.log("Rendering result:", result.song_info.title);
+      const isDownloading = downloadingSnippets[result.song_info.id];
+      const isPlaying = playingSnippet === result.song_info.id;
+      const hasSnippet = result.snippetUrl !== undefined;
+
+      console.log(`Rendering result for ${result.song_info.title}:`, {
+        isDownloading,
+        isPlaying,
+        hasSnippet,
+        snippetUrl: result.snippetUrl,
+      });
+
       return (
         <View key={result.song_info.id} style={styles.resultCard}>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => handleDownloadSnippet(result)}
-            disabled={downloadingSnippets[result.song_info.id]}
-          >
-            {downloadingSnippets[result.song_info.id] ? (
-              <ActivityIndicator size="small" color={Colors.text.primary} />
-            ) : result.snippetUrl ? (
-              <Ionicons name="play" size={24} color={Colors.text.primary} />
-            ) : (
-              <Ionicons name="download" size={24} color={Colors.text.primary} />
-            )}
-          </TouchableOpacity>
+          {hasSnippet ? (
+            <SnippetPlayer
+              result={result}
+              isPlaying={isPlaying}
+              onPlay={() => setPlayingSnippet(result.song_info.id)}
+              onPause={() => setPlayingSnippet(null)}
+            />
+          ) : (
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => handleDownloadSnippet(result)}
+              disabled={isDownloading}
+            >
+              {isDownloading ? (
+                <ActivityIndicator size="small" color={Colors.text.primary} />
+              ) : (
+                <Ionicons
+                  name="download"
+                  size={24}
+                  color={Colors.text.primary}
+                />
+              )}
+            </TouchableOpacity>
+          )}
           <Image
             source={
               result.song_info.albumArt
