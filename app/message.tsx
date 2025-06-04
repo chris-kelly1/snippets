@@ -1,17 +1,19 @@
 import { Colors, FontSizes, FontWeights, Spacing } from "@/constants/theme";
-import { dummyConversations } from "@/data/conversations";
+import { Conversation } from "@/types/conversation";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { MotiView } from "moti";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Dimensions,
   Image,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 import { PanGestureHandler, State } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -21,13 +23,15 @@ type ExtendedConversation = {
   id: string;
   name: string;
   avatars: string[];
-  currentSong: {
-    title: string;
-    artist: string;
-    lyrics: string[];
-    albumCover: string;
-  };
-  members: { id: string; avatar: string }[];
+  currentSong:
+    | {
+        title: string;
+        artist: string;
+        lyrics: string[];
+        albumCover: string;
+      }
+    | undefined;
+  members: { id: string; avatar: string; name: string; initials: string }[];
 };
 
 // Card type for the animated cards
@@ -57,16 +61,16 @@ type AnimatedCardProps = {
 
 // Card animation constants
 const CARD_HEIGHT = 280;
-const CARD_WIDTH = Dimensions.get('window').width * 0.6;
+const CARD_WIDTH = Dimensions.get("window").width * 0.6;
 const VISIBLE_CARDS = 3;
 
 // Create sample data for multiple cards
 const createCardData = (conversation: ExtendedConversation): CardData[] => {
   const baseCard = {
-    title: conversation.currentSong.title,
-    artist: conversation.currentSong.artist,
-    lyrics: conversation.currentSong.lyrics,
-    albumCover: conversation.currentSong.albumCover,
+    title: conversation.currentSong?.title || "",
+    artist: conversation.currentSong?.artist || "",
+    lyrics: conversation.currentSong?.lyrics || [],
+    albumCover: conversation.currentSong?.albumCover || "",
   };
 
   // Create variations of the card with different lyrics
@@ -74,24 +78,28 @@ const createCardData = (conversation: ExtendedConversation): CardData[] => {
     baseCard,
     {
       ...baseCard,
-      lyrics: ["Different verse here", "Another line of music", "Keep the rhythm going"],
-      title: "Different Song"
+      lyrics: [
+        "Different verse here",
+        "Another line of music",
+        "Keep the rhythm going",
+      ],
+      title: "Different Song",
     },
     {
       ...baseCard,
       lyrics: ["Third card lyrics", "Music keeps playing", "Dance to the beat"],
-      title: "Another Track"
+      title: "Another Track",
     },
     {
       ...baseCard,
       lyrics: ["Fourth set of lyrics", "Never ending music", "Feel the vibe"],
-      title: "Next Song"
+      title: "Next Song",
     },
     {
       ...baseCard,
       lyrics: ["Fifth card content", "Music flows through", "Keep it moving"],
-      title: "Last Track"
-    }
+      title: "Last Track",
+    },
   ];
 };
 
@@ -99,7 +107,7 @@ const createCardData = (conversation: ExtendedConversation): CardData[] => {
 const mapData = (data: CardData[], prefix: string): CardItem[] =>
   data.map((item, i) => ({
     id: `${prefix}${i}`,
-    content: item
+    content: item,
   }));
 
 const CardStack = ({ cards }: CardStackProps) => {
@@ -108,7 +116,7 @@ const CardStack = ({ cards }: CardStackProps) => {
     ...mapData(cards, "1"), // Exit animations
     ...mapData(cards, "2"), // Currently displayed
     ...mapData(cards, "3"), // Initial animation
-    ...mapData(cards, "4")  // Avoid final->initial animation
+    ...mapData(cards, "4"), // Avoid final->initial animation
   ];
 
   const [state, setState] = useState({ current: 0, arr: dataClone });
@@ -152,7 +160,13 @@ const CardStack = ({ cards }: CardStackProps) => {
   );
 };
 
-const AnimatedCard = ({ i, card, length, rotateArray, current }: AnimatedCardProps) => {
+const AnimatedCard = ({
+  i,
+  card,
+  length,
+  rotateArray,
+  current,
+}: AnimatedCardProps) => {
   // Helpers to determine card position (directly from original)
   const isLeft = i < length;
   const isFirst = i === length;
@@ -164,7 +178,7 @@ const AnimatedCard = ({ i, card, length, rotateArray, current }: AnimatedCardPro
   // Calculate positions (adapted from original but simplified for React Native)
   const getCardStyle = () => {
     const leftOffset = -30; // Slight offset to move cards left
-    
+
     if (isLeft) {
       return {
         translateX: -CARD_WIDTH * 1.5 + leftOffset,
@@ -186,8 +200,8 @@ const AnimatedCard = ({ i, card, length, rotateArray, current }: AnimatedCardPro
       return {
         translateX: offset + leftOffset,
         translateY: offset * 0.5,
-        scale: 1 - (iFromFirst * 0.05),
-        opacity: 1 - (iFromFirst * 0.2),
+        scale: 1 - iFromFirst * 0.05,
+        opacity: 1 - iFromFirst * 0.2,
         zIndex: length - iFromFirst,
       };
     } else if (isRight) {
@@ -199,12 +213,18 @@ const AnimatedCard = ({ i, card, length, rotateArray, current }: AnimatedCardPro
         zIndex: 0,
       };
     }
-    
-    return { translateX: leftOffset, translateY: 0, scale: 1, opacity: 1, zIndex: 1 };
+
+    return {
+      translateX: leftOffset,
+      translateY: 0,
+      scale: 1,
+      opacity: 1,
+      zIndex: 1,
+    };
   };
 
   const cardStyle = getCardStyle();
-  
+
   const handlePanEnd = (event: any) => {
     if (!isFirst) return;
 
@@ -242,7 +262,7 @@ const AnimatedCard = ({ i, card, length, rotateArray, current }: AnimatedCardPro
           opacity: cardStyle.opacity,
         }}
         transition={{
-          type: 'spring',
+          type: "spring",
           damping: 30,
           stiffness: 300,
           delay: (iFromFirst + current) * 25,
@@ -255,15 +275,25 @@ const AnimatedCard = ({ i, card, length, rotateArray, current }: AnimatedCardPro
         >
           <View style={styles.cardContent}>
             <View style={styles.cardInner}>
-              <Image source={{ uri: card.albumCover }} style={styles.albumCover} />
+              <Image
+                source={{ uri: card.albumCover }}
+                style={styles.albumCover}
+              />
               <View style={styles.lyricsContainer}>
                 <Text style={styles.songLyric}>{card.lyrics[0]}</Text>
                 <Text style={styles.songLyric}>{card.lyrics[1]}</Text>
                 <Text style={styles.songLyric}>{card.lyrics[2]}</Text>
-                <Text style={styles.songMeta}>{card.title} - {card.artist}</Text>
+                <Text style={styles.songMeta}>
+                  {card.title} - {card.artist}
+                </Text>
               </View>
               <View style={styles.pulseIconContainer}>
-                <Ionicons name="pulse" size={24} color={Colors.text.primary} style={styles.pulseIcon} />
+                <Ionicons
+                  name="pulse"
+                  size={24}
+                  color={Colors.text.primary}
+                  style={styles.pulseIcon}
+                />
               </View>
             </View>
           </View>
@@ -273,78 +303,130 @@ const AnimatedCard = ({ i, card, length, rotateArray, current }: AnimatedCardPro
   );
 };
 
+// Parse lyrics from the last message
+const parseLyrics = (message: string): string[] => {
+  // For Where Have You Been, split the lyrics appropriately
+  if (message && message.includes("Where have you been")) {
+    return [
+      "All my life, life, life, life",
+      "Where have you been all my li-i-i-i-i-fe?",
+      "Where have you been all my li-i-i-i-i-fe?",
+    ];
+  }
+
+  // For other songs, create basic 3-line lyrics
+  if (!message) return [];
+
+  const lines = message.split(" ");
+  if (lines.length <= 6) {
+    return [message, message, message];
+  }
+
+  const midpoint = Math.floor(lines.length / 3);
+  return [
+    lines.slice(0, midpoint).join(" "),
+    lines.slice(midpoint, midpoint * 2).join(" "),
+    lines.slice(midpoint * 2).join(" "),
+  ];
+};
+
 export default function MessageScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ conversationId: string }>();
+  const [conversation, setConversation] = useState<Conversation | null>(null);
 
-  // Find the conversation from the dummy data
-  const baseConversation = useMemo(() => {
-    return (
-      dummyConversations.find((c) => c.id === params.conversationId) ||
-      dummyConversations[0]
-    );
+  useEffect(() => {
+    const loadConversation = async () => {
+      if (!params.conversationId) return;
+
+      try {
+        const storedConversations = await AsyncStorage.getItem(
+          "@conversations"
+        );
+        if (storedConversations) {
+          const conversations: Conversation[] = JSON.parse(storedConversations);
+          const foundConversation = conversations.find(
+            (c) => c.id === params.conversationId
+          );
+          setConversation(foundConversation || null);
+        }
+      } catch (error) {
+        console.error("Error loading conversation:", error);
+        setConversation(null); // Handle error by setting conversation to null
+      }
+    };
+
+    loadConversation();
   }, [params.conversationId]);
 
-  // Parse lyrics from the last message
-  const parseLyrics = (message: string): string[] => {
-    // For Where Have You Been, split the lyrics appropriately
-    if (message.includes("Where have you been")) {
-      return [
-        "All my life, life, life, life",
-        "Where have you been all my li-i-i-i-i-fe?",
-        "Where have you been all my li-i-i-i-i-fe?",
-      ];
-    }
+  // Define ExtendedConversation based on the loaded data or dummy if not found (for structure)
+  const extendedConversation = useMemo(() => {
+    if (!conversation) return null;
 
-    // For other songs, create basic 3-line lyrics
-    const lines = message.split(" ");
-    if (lines.length <= 6) {
-      return [message, message, message];
-    }
+    // Parse lyrics only if song data exists and lastMessage is not empty
+    const currentSong =
+      conversation.songTitle && conversation.lastMessage
+        ? {
+            title: conversation.songTitle,
+            artist: conversation.artist || "",
+            lyrics: parseLyrics(conversation.lastMessage),
+            albumCover: conversation.albumCover || "",
+          }
+        : undefined;
 
-    const midpoint = Math.floor(lines.length / 3);
-    return [
-      lines.slice(0, midpoint).join(" "),
-      lines.slice(midpoint, midpoint * 2).join(" "),
-      lines.slice(midpoint * 2).join(" "),
-    ];
-  };
-
-  // Extend the conversation with additional data for the message screen
-  const conversation: ExtendedConversation = useMemo(() => {
     return {
-      id: baseConversation.id,
-      name: baseConversation.name,
-      avatars: baseConversation.avatars,
-      currentSong: {
-        title: baseConversation.songTitle || "",
-        artist: baseConversation.artist || "",
-        lyrics: parseLyrics(baseConversation.lastMessage),
-        albumCover: baseConversation.albumCover || "",
-      },
-      members: [
-        {
-          id: "CK",
-          avatar: "https://api.dicebear.com/7.x/avataaars/png?seed=CK",
-        },
-        {
-          id: "CL",
-          avatar: "https://api.dicebear.com/7.x/avataaars/png?seed=CL",
-        },
-        {
-          id: "JR",
-          avatar: "https://api.dicebear.com/7.x/avataaars/png?seed=JR",
-        },
-      ],
+      id: conversation.id,
+      name: conversation.name,
+      avatars: conversation.avatars,
+      currentSong: currentSong,
+      members:
+        conversation.participants?.map((email, index) => {
+          const username = email.split("@")[0];
+          const nameParts = username.split("."); // Assuming username might be like 'firstName.lastName'
+          let initials = "";
+          if (nameParts.length > 1) {
+            initials = `${nameParts[0].charAt(0)}${nameParts[
+              nameParts.length - 1
+            ].charAt(0)}`;
+          } else if (username.length > 0) {
+            initials = username.charAt(0);
+          }
+          return {
+            id: email, // Keep full email as ID for uniqueness
+            avatar:
+              conversation.avatars[index] ||
+              `https://api.dicebear.com/7.x/avataaars/png?seed=${email}`,
+            name: username, // Store the full username as the name
+            initials: initials.toUpperCase(), // Store initials in uppercase
+          };
+        }) || [],
     };
-  }, [baseConversation]);
+  }, [conversation]);
 
   const handleBackPress = () => {
     router.back();
   };
 
-  // Create card data
-  const cards = useMemo(() => createCardData(conversation), [conversation]);
+  // Create card data only if extendedConversation and currentSong exist
+  const cards = useMemo(() => {
+    if (extendedConversation?.currentSong) {
+      return createCardData(extendedConversation);
+    }
+    return [];
+  }, [extendedConversation]);
+
+  if (!extendedConversation) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color="#95B3FF" />
+        <Text style={{ color: Colors.text.primary, marginTop: 10 }}>
+          Loading Conversation...
+        </Text>
+      </View>
+    );
+  }
+
+  const firstParticipant = extendedConversation.members[0];
 
   return (
     <View style={styles.container}>
@@ -368,7 +450,7 @@ export default function MessageScreen() {
           </TouchableOpacity>
 
           <View style={styles.headerContent}>
-            <Text style={styles.headerTitle}>{conversation.name}</Text>
+            <Text style={styles.headerTitle}>{extendedConversation.name}</Text>
           </View>
 
           <View style={styles.fakeBackButton} />
@@ -376,25 +458,27 @@ export default function MessageScreen() {
 
         {/* Content */}
         <View style={styles.content}>
-          {/* User Profile */}
-          <View style={styles.profileSection}>
-            <Text style={styles.userName}>Reid McCaw</Text>
-            <View style={styles.profileImageContainer}>
-              <Image
-                source={{ uri: conversation.avatars[0] }}
-                style={styles.profileImage}
-              />
+          {/* User Profile - Show first participant */}
+          {firstParticipant && (
+            <View style={styles.profileSection}>
+              <Text style={styles.userName}>{firstParticipant.name}</Text>
+              <View style={styles.profileImageContainer}>
+                <Image
+                  source={{ uri: firstParticipant.avatar }}
+                  style={styles.profileImage}
+                />
+              </View>
             </View>
-          </View>
+          )}
 
-          {/* Animated Card Stack */}
-          <CardStack cards={cards} />
+          {/* Animated Card Stack - Show only if cards exist */}
+          {cards.length > 0 && <CardStack cards={cards} />}
         </View>
 
         {/* Bottom user list */}
         <View style={styles.bottomContainer}>
-          <View style={styles.userAvatarRow}>
-            {conversation.members.map((member) => (
+          <View style={[styles.userAvatarRow, { justifyContent: "center" }]}>
+            {extendedConversation.members.map((member) => (
               <View key={member.id} style={styles.memberContainer}>
                 <View style={styles.memberAvatarContainer}>
                   <Image
@@ -402,7 +486,8 @@ export default function MessageScreen() {
                     style={styles.memberAvatar}
                   />
                 </View>
-                <Text style={styles.memberName}>{member.id}</Text>
+                {/* Show initials under each avatar in the bottom row */}
+                <Text style={styles.memberName}>{member.initials}</Text>
               </View>
             ))}
           </View>
@@ -484,42 +569,42 @@ const styles = StyleSheet.create({
   },
   cardStackContainer: {
     height: 320,
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 32,
-    position: 'relative',
-    overflow: 'visible',
+    position: "relative",
+    overflow: "visible",
   },
   animatedCard: {
-    position: 'absolute',
+    position: "absolute",
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
   },
   cardTouchable: {
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
   },
   cardContent: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#222',
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#222",
     borderRadius: 24,
     borderWidth: 2,
-    borderColor: '#fff',
-    shadowColor: '#000',
+    borderColor: "#fff",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.18,
     shadowRadius: 16,
     elevation: 8,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   cardInner: {
-    flexDirection: 'column',
-    alignItems: 'center',
+    flexDirection: "column",
+    alignItems: "center",
     padding: 20,
-    height: '100%',
-    justifyContent: 'space-between',
+    height: "100%",
+    justifyContent: "space-between",
   },
   albumCover: {
     width: 80,
@@ -529,26 +614,26 @@ const styles = StyleSheet.create({
   },
   lyricsContainer: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 8,
   },
   songLyric: {
-    color: '#7EB6FF',
-    fontWeight: 'bold',
+    color: "#7EB6FF",
+    fontWeight: "bold",
     fontSize: 16,
     marginBottom: 4,
-    textAlign: 'center',
+    textAlign: "center",
     lineHeight: 20,
   },
   songMeta: {
-    color: '#aaa',
+    color: "#aaa",
     fontSize: 12,
     marginTop: 8,
-    textAlign: 'center',
+    textAlign: "center",
   },
   pulseIconContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 12,
   },
   pulseIcon: {
@@ -560,11 +645,12 @@ const styles = StyleSheet.create({
   },
   userAvatarRow: {
     flexDirection: "row",
-    justifyContent: "space-around",
     marginBottom: Spacing.lg,
+    paddingHorizontal: Spacing.md,
   },
   memberContainer: {
     alignItems: "center",
+    marginHorizontal: Spacing.sm,
   },
   memberAvatarContainer: {
     width: 50,
@@ -573,6 +659,8 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: "#2A2A2A",
     marginBottom: Spacing.xs,
+    borderWidth: 2,
+    borderColor: Colors.background,
   },
   memberAvatar: {
     width: "100%",
