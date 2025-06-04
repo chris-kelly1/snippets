@@ -1,20 +1,32 @@
 import SpotifyLogo from "@/assets/images/spotify.svg";
 import { Button } from "@/components/ui/button";
 import useSpotifyAuth from "@/spotify/useSpotifyAuth";
-import { DMSans_400Regular, DMSans_700Bold, useFonts } from '@expo-google-fonts/dm-sans';
-import MaskedView from '@react-native-masked-view/masked-view';
-import { LinearGradient } from 'expo-linear-gradient';
+import {
+  DMSans_400Regular,
+  DMSans_700Bold,
+  useFonts,
+} from "@expo-google-fonts/dm-sans";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import MaskedView from "@react-native-masked-view/masked-view";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { MotiView } from "moti";
-import React from "react";
-import { Dimensions, ImageBackground, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import {
+  Dimensions,
+  ImageBackground,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
-const { width } = Dimensions.get('window');
+const { width } = Dimensions.get("window");
 
 export default function LaunchScreen() {
   const router = useRouter();
-  const { login, error, isLoading } = useSpotifyAuth();
+  const { login, error, isLoading, token } = useSpotifyAuth();
+  const [tempError, setTempError] = useState<string | null>(null);
 
   const [fontsLoaded] = useFonts({
     DMSans_400Regular,
@@ -22,12 +34,37 @@ export default function LaunchScreen() {
   });
 
   const handleSpotifyLogin = async () => {
-    await login();
-    // Only navigate if there's no error or if the error is not a cancellation
-    if (!error || error.message !== "Authentication was cancelled") {
-      router.replace("/home");
+    try {
+      await login();
+
+      // Wait for token to be set in storage
+      let attempts = 0;
+      const checkToken = setInterval(async () => {
+        const storedToken = await AsyncStorage.getItem("@spotify_token");
+        if (storedToken) {
+          clearInterval(checkToken);
+          router.replace("/home");
+        } else if (attempts >= 10) {
+          // Try for 1 second (10 * 100ms)
+          clearInterval(checkToken);
+        }
+        attempts++;
+      }, 100);
+    } catch (err) {
+      console.error("Login error:", err);
     }
   };
+
+  // Add effect to monitor token changes
+  useEffect(() => {
+    if (error?.message === "Authentication was cancelled") {
+      setTempError(error.message);
+      const timer = setTimeout(() => {
+        setTempError(null);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
 
   if (!fontsLoaded) {
     return null; // or a loading spinner
@@ -46,11 +83,7 @@ export default function LaunchScreen() {
           <View style={styles.titleContainer}>
             <MaskedView
               style={styles.maskedView}
-              maskElement={
-                <Text style={styles.titleText}>
-                  snippets
-                </Text>
-              }
+              maskElement={<Text style={styles.titleText}>snippets</Text>}
             >
               <MotiView
                 style={styles.gradientContainer}
@@ -58,14 +91,21 @@ export default function LaunchScreen() {
                   translateX: [-width, width],
                 }}
                 transition={{
-                  type: 'timing',
+                  type: "timing",
                   duration: 3000,
                   loop: true,
                   repeatReverse: true,
                 }}
               >
                 <LinearGradient
-                  colors={['#ffffff40', '#ffffff20', '#ffffff', '#ffffff', '#ffffff20', '#ffffff40']}
+                  colors={[
+                    "#ffffff40",
+                    "#ffffff20",
+                    "#ffffff",
+                    "#ffffff",
+                    "#ffffff20",
+                    "#ffffff40",
+                  ]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={styles.gradient}
@@ -92,7 +132,7 @@ export default function LaunchScreen() {
                   </Text>
                 </View>
               </Button>
-              {error && <Text style={styles.errorText}>{error.message}</Text>}
+              {tempError && <Text style={styles.errorText}>{tempError}</Text>}
             </View>
           </View>
         </View>

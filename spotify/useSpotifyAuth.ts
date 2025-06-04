@@ -164,6 +164,9 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
         new Error(authResponse.error?.message || "Authentication failed")
       );
     } else if (authResponse?.type === "cancel") {
+      console.log("Authentication was cancelled.");
+      setToken(null);
+      setUser(null);
       setError(new Error("Authentication was cancelled"));
     }
   };

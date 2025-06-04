@@ -15,7 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import useSpotifyAuth from "../spotify/useSpotifyAuth";
 
 export default function Home() {
-  const { user, refreshUser } = useSpotifyAuth();
+  const { user, token, refreshUser } = useSpotifyAuth();
   const [profileImageUrl, setProfileImageUrl] = useState(
     user?.profile_image ||
       "https://api.dicebear.com/7.x/avataaars/png?seed=Calvin"
@@ -23,6 +23,17 @@ export default function Home() {
   const [isNewChatModalVisible, setIsNewChatModalVisible] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const router = useRouter();
+
+  // Check for valid token and redirect if none exists
+  useEffect(() => {
+    const checkAuth = async () => {
+      const storedToken = await AsyncStorage.getItem("@spotify_token");
+      if (!storedToken) {
+        router.replace("/launch");
+      }
+    };
+    checkAuth();
+  }, []);
 
   // Load conversations from AsyncStorage
   useEffect(() => {
