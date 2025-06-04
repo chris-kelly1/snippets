@@ -177,6 +177,52 @@ export default function SearchScreen() {
     router.back();
   };
 
+  const checkExistingSnippets = async (results: SearchResult[]) => {
+    try {
+      // Check if snippets already exist for these songs
+      const response = await fetch("http://localhost:8000/check-snippet", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          songs: results.map((r) => ({
+            id: r.song_info.id,
+            title: r.song_info.title,
+            artist: r.song_info.artist,
+          })),
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Existing snippets check:", JSON.stringify(data, null, 2));
+
+        // Update results with existing snippet URLs
+        return results.map((result) => {
+          const existingSnippet = data.snippets?.find(
+            (s: any) => s.song_id === result.song_info.id
+          );
+          return existingSnippet
+            ? { ...result, snippetUrl: existingSnippet.url }
+            : result;
+        });
+      } else {
+        console.error(
+          "Failed to check snippets:",
+          response.status,
+          response.statusText
+        );
+      }
+    } catch (error) {
+      console.error("Error checking existing snippets:", error);
+    }
+
+    // Return original results if check fails
+    return results;
+  };
+
   const handleDownloadSnippet = async (result: SearchResult) => {
     if (!result.matches || result.matches.length === 0) return;
 
@@ -375,6 +421,8 @@ export default function SearchScreen() {
 
       if (data && Array.isArray(data)) {
         // If we have a Spotify token, fetch album art for each result
+        let finalResults = data;
+
         if (token) {
           console.log("Spotify token available, fetching album art...");
           const resultsWithAlbumArt = await Promise.all(
@@ -411,12 +459,17 @@ export default function SearchScreen() {
               }
             })
           );
-          setSearchResults(resultsWithAlbumArt);
+          finalResults = resultsWithAlbumArt;
         } else {
           console.log("No Spotify token available, skipping album art fetch");
-          setSearchResults(data);
         }
-        console.log("Set search results:", data.length, "items");
+
+        // Check for existing snippets
+        console.log("Checking for existing snippets...");
+        finalResults = await checkExistingSnippets(finalResults);
+
+        setSearchResults(finalResults);
+        console.log("Set search results:", finalResults.length, "items");
       } else {
         console.error("Unexpected response format:", data);
         setSearchResults([]);
