@@ -8,4 +8,5 @@ export type Conversation = {
   artist?: string;
   albumCover?: string;
   hasUnread?: boolean;
-}; 
+  participants?: string[]; // Array of participant emails
+};
