@@ -3,13 +3,14 @@ import { ConversationList } from "@/components/conversations/ConversationList";
 import { Header } from "@/components/conversations/Header";
 import { NewChatModal } from "@/components/conversations/NewChatModal";
 import { Colors } from "@/constants/theme";
+import { dummyConversations } from "@/data/conversations";
 import { Conversation } from "@/types/conversation";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useState } from "react";
-import { StyleSheet, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import useSpotifyAuth from "../spotify/useSpotifyAuth";
 
@@ -32,16 +33,21 @@ export default function Home() {
         );
         if (storedConversations) {
           setConversations(JSON.parse(storedConversations));
+        } else {
+          // If no conversations in storage, load dummy data initially
+          setConversations(dummyConversations);
         }
       } catch (error) {
         console.error("Error loading conversations:", error);
+        // Fallback to dummy data on error
+        setConversations(dummyConversations);
       }
     };
 
     loadConversations();
   }, []);
 
-  // Save conversations to AsyncStorage whenever they change
+  // Save conversations to AsyncStorage whenever they change, excluding dummy data check
   useEffect(() => {
     const saveConversations = async () => {
       try {
@@ -54,10 +60,23 @@ export default function Home() {
       }
     };
 
-    if (conversations.length > 0) {
+    // Only save if conversations state has been populated (either from storage or dummy)
+    if (
+      conversations.length > 0 ||
+      (conversations.length === 0 && hasLoadedInitial.current)
+    ) {
+      // Added hasLoadedInitial ref check
       saveConversations();
     }
+
+    if (conversations.length > 0 && !hasLoadedInitial.current) {
+      // Set the ref once conversations are loaded
+      hasLoadedInitial.current = true;
+    }
   }, [conversations]);
+
+  // Ref to track if initial conversations have been loaded
+  const hasLoadedInitial = React.useRef(false);
 
   // Update profile image whenever user data changes
   useEffect(() => {
@@ -117,6 +136,16 @@ export default function Home() {
     setIsNewChatModalVisible(false);
   };
 
+  const handleClearConversations = async () => {
+    try {
+      await AsyncStorage.removeItem("@conversations");
+      setConversations([]); // Clear the state as well
+      console.log("Conversations cleared from AsyncStorage");
+    } catch (error) {
+      console.error("Error clearing conversations:", error);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
@@ -135,6 +164,14 @@ export default function Home() {
           <ConversationList conversations={conversations} />
         </View>
       </SafeAreaView>
+
+      {/* Temporary button to clear conversations */}
+      <TouchableOpacity
+        style={styles.clearButton}
+        onPress={handleClearConversations}
+      >
+        <Text style={styles.clearButtonText}>Clear Chats</Text>
+      </TouchableOpacity>
 
       <TouchableOpacity
         style={styles.fab}
@@ -201,5 +238,18 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
+  },
+  clearButton: {
+    position: "absolute",
+    left: 20,
+    bottom: 20,
+    backgroundColor: "red",
+    padding: 10,
+    borderRadius: 5,
+    zIndex: 100,
+  },
+  clearButtonText: {
+    color: "white",
+    fontWeight: "bold",
   },
 });
