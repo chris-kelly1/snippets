@@ -170,6 +170,7 @@ export default function SearchScreen() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [lastSearchQuery, setLastSearchQuery] = useState(""); // Store the query used for current results
   const { token } = useSpotifyAuth();
 
   const handleBackPress = () => {
@@ -235,37 +236,99 @@ export default function SearchScreen() {
   };
 
   const formatLyricMatch = (text: string, query: string) => {
-    const words = text.split(" ");
     const queryIndex = text.toLowerCase().indexOf(query.toLowerCase());
 
     if (queryIndex === -1) return text;
 
-    // Find the word boundaries around the query
-    let startIndex = Math.max(0, queryIndex - 20);
-    let endIndex = Math.min(text.length, queryIndex + query.length + 20);
+    // Convert to words array to work with word boundaries
+    const words = text.split(/\s+/);
+    const queryWords = query.toLowerCase().split(/\s+/);
 
-    // Adjust to word boundaries
-    while (startIndex > 0 && text[startIndex] !== " ") startIndex--;
-    while (endIndex < text.length && text[endIndex] !== " ") endIndex++;
+    // Find the starting word index of the query
+    let matchStartWordIndex = -1;
+    for (let i = 0; i <= words.length - queryWords.length; i++) {
+      const wordSlice = words
+        .slice(i, i + queryWords.length)
+        .join(" ")
+        .toLowerCase();
+      if (wordSlice === query.toLowerCase()) {
+        matchStartWordIndex = i;
+        break;
+      }
+    }
 
-    // Extract the context
-    let context = text.slice(startIndex, endIndex).trim();
+    if (matchStartWordIndex === -1) {
+      // Fallback to character-based search if word-based fails
+      const contextRadius = 40;
+      let startIndex = Math.max(0, queryIndex - contextRadius);
+      let endIndex = Math.min(
+        text.length,
+        queryIndex + query.length + contextRadius
+      );
 
-    // Add ellipsis if needed
-    if (startIndex > 0) context = "..." + context;
-    if (endIndex < text.length) context = context + "...";
+      // Adjust to word boundaries
+      while (startIndex > 0 && text[startIndex] !== " ") startIndex--;
+      while (endIndex < text.length && text[endIndex] !== " ") endIndex++;
 
-    // Split the context into parts to highlight the query
-    const parts = context.split(new RegExp(`(${query})`, "i"));
+      let context = text.slice(startIndex, endIndex).trim();
 
-    return parts.map((part, index) =>
-      part.toLowerCase() === query.toLowerCase() ? (
-        <Text key={index} style={styles.highlightedText}>
-          {part}
-        </Text>
-      ) : (
-        <Text key={index}>{part}</Text>
-      )
+      // Add ellipsis if needed
+      if (startIndex > 0) context = "..." + context;
+      if (endIndex < text.length) context = context + "...";
+
+      // Split and highlight
+      const parts = context.split(new RegExp(`(${query})`, "i"));
+      return parts.map((part, index) =>
+        part.toLowerCase() === query.toLowerCase() ? (
+          <Text key={index} style={styles.highlightedText}>
+            {part}
+          </Text>
+        ) : (
+          <Text key={index}>{part}</Text>
+        )
+      );
+    }
+
+    // Word-based context (show 4-6 words before and after)
+    const contextWordsCount = 5;
+    const matchEndWordIndex = matchStartWordIndex + queryWords.length - 1;
+
+    const startWordIndex = Math.max(0, matchStartWordIndex - contextWordsCount);
+    const endWordIndex = Math.min(
+      words.length - 1,
+      matchEndWordIndex + contextWordsCount
+    );
+
+    // Get the context words
+    const beforeWords = words.slice(startWordIndex, matchStartWordIndex);
+    const matchWords = words.slice(matchStartWordIndex, matchEndWordIndex + 1);
+    const afterWords = words.slice(matchEndWordIndex + 1, endWordIndex + 1);
+
+    // Build the display text
+    let displayText = "";
+
+    // Add ellipsis and before words
+    if (startWordIndex > 0) displayText += "...";
+    if (beforeWords.length > 0) displayText += beforeWords.join(" ");
+
+    // Add the match
+    if (beforeWords.length > 0) displayText += " ";
+    const matchText = matchWords.join(" ");
+
+    // Add after words
+    const afterText = afterWords.length > 0 ? " " + afterWords.join(" ") : "";
+
+    // Add ellipsis if there are more words after
+    const ellipsisAfter = endWordIndex < words.length - 1 ? "..." : "";
+
+    return (
+      <>
+        {startWordIndex > 0 && <Text>...</Text>}
+        {beforeWords.length > 0 && <Text>{beforeWords.join(" ")} </Text>}
+        <Text style={styles.highlightedText}>{matchText}</Text>
+        {afterWords.length > 0 && <Text> {afterWords.join(" ")}</Text>}
+        {endWordIndex < words.length - 1 && <Text>...</Text>}
+      </>
     );
   };
 
@@ -273,6 +336,7 @@ export default function SearchScreen() {
     setSearchQuery("");
     setSearchResults([]);
     setHasSearched(false);
+    setLastSearchQuery(""); // Clear the stored search query
   };
 
   const handleSearch = async () => {
@@ -283,6 +347,7 @@ export default function SearchScreen() {
 
     setHasSearched(true);
     setIsLoading(true);
+    setLastSearchQuery(searchQuery); // Store the query used for these results
     try {
       console.log("Making request to:", "http://127.0.0.1:8000/search-lyrics");
       console.log("With query:", searchQuery);
@@ -402,10 +467,9 @@ export default function SearchScreen() {
           <View style={styles.songInfo}>
             <Text style={styles.songTitle}>{result.song_info.title}</Text>
             <Text style={styles.artistName}>{result.song_info.artist}</Text>
-            {result.matches && result.matches[0] && (
+            {result.matches && result.matches[0] && lastSearchQuery && (
               <Text style={styles.lyricMatch}>
-                ...<Text style={styles.highlightedText}>{searchQuery}</Text>
-                {result.matches[0].text.replace(searchQuery, "")}
+                {formatLyricMatch(result.matches[0].text, lastSearchQuery)}
               </Text>
             )}
           </View>
