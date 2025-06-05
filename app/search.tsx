@@ -4,18 +4,18 @@ import { CreateMessageRequest } from "@/types/message";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
-import { Stack, useRouter, useLocalSearchParams } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { searchSongs } from "../spotify/apiOptions";
@@ -29,6 +29,8 @@ interface SongInfo {
   url: string;
   release_date: string;
   albumArt?: string;
+  previewUrl?: string;
+  spotifyId?: string;
 }
 
 interface LyricMatch {
@@ -130,27 +132,6 @@ function SnippetPlayer({
   );
 }
 
-interface SongInfo {
-  id: number;
-  title: string;
-  artist: string;
-  url: string;
-  release_date: string;
-  albumArt?: string;
-}
-
-interface LyricMatch {
-  timestamp: number;
-  text: string;
-  time_formatted: string;
-  artificial: boolean;
-}
-
-interface SearchResult {
-  song_info: SongInfo;
-  matches: LyricMatch[];
-}
-
 export default function SearchScreen() {
   const router = useRouter();
   const [displayQuery, setDisplayQuery] = useState("");
@@ -213,7 +194,8 @@ export default function SearchScreen() {
         song_title: result.song_info.title,
         artist: result.song_info.artist,
         album_cover: result.song_info.albumArt || undefined,
-        audio_url: result.snippetUrl,
+        audio_url: result.snippetUrl || result.song_info.previewUrl || undefined,
+        spotify_id: result.song_info.spotifyId || result.song_info.id?.toString() || undefined,
       };
 
       console.log('Sending message:', messageRequest);
@@ -491,11 +473,16 @@ export default function SearchScreen() {
                   token
                 );
                 const albumArt = spotifyResults[0]?.imageUrl;
+                const spotifyId = spotifyResults[0]?.externalUrl;
+                const previewUrl = spotifyResults[0]?.previewUrl;
+                
                 return {
                   ...result,
                   song_info: {
                     ...result.song_info,
-                    albumArt,
+                    albumArt: albumArt || `https://api.dicebear.com/7.x/shapes/png?seed=${result.song_info.title}`,
+                    spotifyId,
+                    previewUrl,
                   },
                 };
               } catch (error: any) {
@@ -504,22 +491,37 @@ export default function SearchScreen() {
                   result.song_info.title,
                   error
                 );
-                // If it's a 401 error, log additional info about the token
-                if (error?.response?.status === 401) {
+                // If it's a 401/403 error, the token is expired/invalid
+                if (error?.response?.status === 401 || error?.response?.status === 403) {
                   console.error(
-                    "Spotify token appears to be expired or invalid"
+                    "🔴 Spotify token expired/invalid - user needs to re-authenticate"
                   );
                   console.error("Token exists:", !!token);
                   console.error("Token length:", token?.length);
+                  console.error("💡 Solution: Go to profile and re-login to Spotify");
                 }
-                // Return the original result without album art
-                return result;
+                // Return the result with fallback album art
+                return {
+                  ...result,
+                  song_info: {
+                    ...result.song_info,
+                    albumArt: `https://api.dicebear.com/7.x/shapes/png?seed=${result.song_info.title}`,
+                  },
+                };
               }
             })
           );
           finalResults = resultsWithAlbumArt;
         } else {
-          console.log("No Spotify token available, skipping album art fetch");
+          console.log("No Spotify token available, using fallback album art");
+          // Add fallback album art when no Spotify token
+          finalResults = data.map(result => ({
+            ...result,
+            song_info: {
+              ...result.song_info,
+              albumArt: `https://api.dicebear.com/7.x/shapes/png?seed=${result.song_info.title}`,
+            },
+          }));
         }
 
         // Check for existing snippets

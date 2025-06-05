@@ -14,8 +14,8 @@ interface EnvConfig {
 }
 
 // Replace this with your Spotify Client ID from the Spotify Developer Dashboard
-const CLIENT_ID = "80146fecc5c5415d83010f6bd87f0039";
-const CLIENT_SECRET = "7155d29763014d8fa71679915231ad67";
+const CLIENT_ID = "061a72ed13c042fb988132620e39ad6d";
+const CLIENT_SECRET = "d28bc8ebb85d44fc8fa7df498051d555";
 
 // Replace this with your Supabase anonymous key
 const SUPABASE_ANON_KEY =

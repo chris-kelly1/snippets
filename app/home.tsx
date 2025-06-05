@@ -3,7 +3,7 @@ import { ConversationList } from "@/components/conversations/ConversationList";
 import { Header } from "@/components/conversations/Header";
 import { NewChatModal } from "@/components/conversations/NewChatModal";
 import { Colors } from "@/constants/theme";
-import { createConversation, getUserConversations } from "@/lib/messaging";
+import { createConversation, getUserConversations, getConversationMessages } from "@/lib/messaging";
 import { User, ensureCurrentUserExists, testDatabaseConnection } from "@/lib/users";
 import { Conversation } from "@/types/conversation";
 import { Ionicons } from "@expo/vector-icons";
@@ -65,8 +65,8 @@ export default function Home() {
       try {
         const realConversations = await getUserConversations();
         
-        // Add avatars to conversations based on participants
-        const conversationsWithAvatars = await Promise.all(
+        // Add avatars and latest messages to conversations based on participants
+        const conversationsWithData = await Promise.all(
           realConversations.map(async (conv) => {
             if (conv.participants && conv.participants.length > 0) {
               // Try to get real user avatars from the database
@@ -82,11 +82,33 @@ export default function Home() {
                 // Fallback to generated avatar
                 return `https://api.dicebear.com/7.x/avataaars/png?seed=${email}`;
               });
+
+              // Get latest message for this conversation
+              let lastMessage = '';
+              let songTitle = '';
+              let artist = '';
+              let albumCover = '';
+              
+              try {
+                const messages = await getConversationMessages(conv.id);
+                if (messages.length > 0) {
+                  const latestMessage = messages[messages.length - 1];
+                  lastMessage = latestMessage.lyrics.join(' ');
+                  songTitle = latestMessage.song_title;
+                  artist = latestMessage.artist;
+                  albumCover = latestMessage.album_cover || '';
+                }
+              } catch (error) {
+                console.error(`Error fetching messages for conversation ${conv.id}:`, error);
+              }
               
               return {
                 ...conv,
                 avatars,
-                lastMessage: conv.lastMessage || '',
+                lastMessage: lastMessage || '',
+                songTitle,
+                artist,
+                albumCover,
                 time: conv.updated_at ? new Date(conv.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'now'
               };
             }
@@ -94,12 +116,12 @@ export default function Home() {
           })
         );
         
-        setConversations(conversationsWithAvatars);
+        setConversations(conversationsWithData);
         
         // Also save to AsyncStorage as cache
         await AsyncStorage.setItem(
           "@conversations",
-          JSON.stringify(conversationsWithAvatars)
+          JSON.stringify(conversationsWithData)
         );
       } catch (error) {
         console.error("Error loading conversations:", error);

@@ -27,7 +27,7 @@ export const ConversationItem = ({ conversation }: ConversationItemProps) => {
         </View>
         
         <View style={styles.messageContainer}>
-          {conversation.songTitle ? (
+          {conversation.songTitle && conversation.lastMessage ? (
             <View style={styles.songMessageContainer}>
               {conversation.albumCover && (
                 <Image 
@@ -36,7 +36,7 @@ export const ConversationItem = ({ conversation }: ConversationItemProps) => {
                 />
               )}
               <View style={styles.songTextContainer}>
-                <Text style={styles.conversationMessage} numberOfLines={1}>
+                <Text style={styles.lyricsPreview} numberOfLines={1}>
                   {conversation.lastMessage}
                 </Text>
                 <Text style={styles.songInfo} numberOfLines={1}>
@@ -44,9 +44,13 @@ export const ConversationItem = ({ conversation }: ConversationItemProps) => {
                 </Text>
               </View>
             </View>
-          ) : (
+          ) : conversation.lastMessage ? (
             <Text style={styles.conversationMessage} numberOfLines={1}>
               {conversation.lastMessage}
+            </Text>
+          ) : (
+            <Text style={styles.noMessages} numberOfLines={1}>
+              No messages yet
             </Text>
           )}
           
@@ -108,6 +112,19 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.md,
     flex: 1,
     color: Colors.text.primary,
+  },
+  lyricsPreview: {
+    fontSize: FontSizes.md,
+    flex: 1,
+    color: '#7EB6FF',
+    fontStyle: 'italic',
+    fontWeight: FontWeights.medium,
+  },
+  noMessages: {
+    fontSize: FontSizes.md,
+    flex: 1,
+    color: Colors.text.secondary,
+    fontStyle: 'italic',
   },
   unreadIndicator: {
     width: 8,

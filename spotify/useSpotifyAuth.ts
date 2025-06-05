@@ -78,6 +78,7 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
   );
 
   const handleAuthenticationResponse = async (authResponse: any) => {
+    console.log("🚀 handleAuthenticationResponse called with:", authResponse?.type);
     if (authResponse?.type === "success") {
       const { code } = authResponse.params;
 
@@ -95,15 +96,49 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
           SPOTIFY_API.DISCOVERY
         );
 
+        console.log("Token response from Spotify exchangeCodeAsync:", tokenResponse);
+
+        // Retrieve access token property – the key differs depending on expo-auth-session version
+        const accessToken =
+          (tokenResponse as any).accessToken ??
+          (tokenResponse as any).access_token ??
+          (tokenResponse as any).token ??
+          null;
+
+        console.log("Resolved accessToken:", accessToken);
+
+        if (!accessToken) {
+          throw new Error("Unable to resolve access token from Spotify response");
+        }
+
         // Fetch user profile data first
         try {
+          console.log("Fetching https://api.spotify.com/v1/me with token header...");
+          console.log("Authorization header:", `Bearer ${accessToken.substring(0, 20)}...`);
+
+          // First, try a simple endpoint to test token validity
+          console.log("Testing token with simpler endpoint first...");
+          const testResponse = await fetch("https://api.spotify.com/v1/markets", {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          });
+          console.log("Markets endpoint response status:", testResponse.status);
+          if (!testResponse.ok) {
+            const errorText = await testResponse.text();
+            console.log("Markets endpoint error body:", errorText);
+          }
+
           const userResponse = await fetch("https://api.spotify.com/v1/me", {
             headers: {
-              Authorization: `Bearer ${tokenResponse.accessToken}`,
+              Authorization: `Bearer ${accessToken}`,
             },
           });
 
           if (!userResponse.ok) {
+            console.error("/me request failed", userResponse.status, userResponse.statusText);
+            const errorBody = await userResponse.text();
+            console.error("Error response body:", errorBody);
             throw new Error(
               `Failed to fetch user data: ${userResponse.status} ${userResponse.statusText}`
             );
@@ -131,12 +166,12 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
           }
 
           // Set both token and user data together
-          setToken(tokenResponse.accessToken);
+          setToken(accessToken);
           setUser(spotifyUser);
 
           // Store both token and user data in AsyncStorage
           await Promise.all([
-            AsyncStorage.setItem(STORAGE_KEYS.TOKEN, tokenResponse.accessToken),
+            AsyncStorage.setItem(STORAGE_KEYS.TOKEN, accessToken),
             AsyncStorage.setItem(
               STORAGE_KEYS.USER,
               JSON.stringify(spotifyUser)
@@ -171,9 +206,27 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
     }
   };
 
+  // Validate token by testing it against Spotify API
+  const validateToken = async (tokenToValidate: string): Promise<boolean> => {
+    console.log("🔍 validateToken called with token:", tokenToValidate?.substring(0, 20) + "...");
+    try {
+      const response = await fetch("https://api.spotify.com/v1/me", {
+        headers: {
+          Authorization: `Bearer ${tokenToValidate}`,
+        },
+      });
+      console.log("🔍 validateToken response status:", response.status);
+      return response.ok;
+    } catch (error) {
+      console.error("Token validation failed:", error);
+      return false;
+    }
+  };
+
   // Load persisted auth state on mount
   useEffect(() => {
     const loadPersistedAuth = async () => {
+      console.log("📱 loadPersistedAuth starting...");
       try {
         const [storedToken, storedUser] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.TOKEN),
@@ -187,8 +240,24 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
         });
 
         if (storedToken && storedUser) {
-          setToken(storedToken);
-          setUser(JSON.parse(storedUser));
+          console.log("📱 Found stored credentials, validating token...");
+          // Validate the stored token
+          const isValidToken = await validateToken(storedToken);
+          
+          if (isValidToken) {
+            setToken(storedToken);
+            setUser(JSON.parse(storedUser));
+            console.log("✅ Stored Spotify token is valid");
+          } else {
+            console.log("❌ Stored Spotify token is invalid/expired, clearing auth");
+            // Clear invalid token
+            await Promise.all([
+              AsyncStorage.removeItem(STORAGE_KEYS.TOKEN),
+              AsyncStorage.removeItem(STORAGE_KEYS.USER),
+            ]);
+            setToken(null);
+            setUser(null);
+          }
         }
       } catch (err) {
         console.error("Error loading persisted auth:", err);
