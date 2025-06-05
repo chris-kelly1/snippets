@@ -1,7 +1,10 @@
 import { Colors, FontSizes, FontWeights, Spacing } from "@/constants/theme";
+import { sendMessage } from "@/lib/messaging";
+import { CreateMessageRequest } from "@/types/message";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -12,6 +15,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { searchSongs } from "../spotify/apiOptions";
@@ -175,6 +179,60 @@ export default function SearchScreen() {
 
   const handleBackPress = () => {
     router.back();
+  };
+
+  const handleSendSnippet = async (result: SearchResult) => {
+    if (!result.matches || result.matches.length === 0) {
+      Alert.alert("Error", "No lyrics to send");
+      return;
+    }
+
+    try {
+      const match = result.matches[0];
+      const lyricsArray = match.text.split(' ').reduce((acc: string[], word: string, index: number) => {
+        const lineIndex = Math.floor(index / 3); // 3 words per line
+        if (!acc[lineIndex]) acc[lineIndex] = '';
+        acc[lineIndex] += (acc[lineIndex] ? ' ' : '') + word;
+        return acc;
+      }, []);
+
+      // Get the latest conversation ID from storage
+      const storedConversations = await AsyncStorage.getItem("@conversations");
+      let conversationId = "00000000-0000-0000-0000-000000000001"; // fallback UUID
+      
+      if (storedConversations) {
+        const conversations = JSON.parse(storedConversations);
+        if (conversations.length > 0) {
+          conversationId = conversations[0].id; // Use the most recent conversation
+        }
+      }
+
+      const messageRequest: CreateMessageRequest = {
+        conversation_id: conversationId,
+        lyrics: lyricsArray.slice(0, 3), // Take first 3 lines
+        song_title: result.song_info.title,
+        artist: result.song_info.artist,
+        album_cover: result.song_info.albumArt || undefined,
+        audio_url: result.snippetUrl,
+      };
+
+      console.log('Sending message:', messageRequest);
+      await sendMessage(messageRequest);
+      
+      Alert.alert(
+        "Snippet Sent!",
+        `Sent "${result.song_info.title}" snippet successfully!`,
+        [
+          {
+            text: "OK",
+            onPress: () => router.back(),
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Error sending snippet:', error);
+      Alert.alert("Error", "Failed to send snippet. Please try again.");
+    }
   };
 
   const checkExistingSnippets = async (results: SearchResult[]) => {
@@ -551,6 +609,18 @@ export default function SearchScreen() {
                 )}
               </TouchableOpacity>
             )}
+            
+            {/* Send button - always show for testing */}
+            <TouchableOpacity
+              style={[styles.actionButton, styles.sendButton]}
+              onPress={() => handleSendSnippet(result)}
+            >
+              <Ionicons
+                name="send"
+                size={24}
+                color="#fff"
+              />
+            </TouchableOpacity>
           </View>
         </View>
       );
@@ -735,6 +805,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginRight: Spacing.sm,
+  },
+  sendButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: 20,
   },
   actionButtons: {
     flexDirection: "row",

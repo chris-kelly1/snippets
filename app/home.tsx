@@ -3,14 +3,15 @@ import { ConversationList } from "@/components/conversations/ConversationList";
 import { Header } from "@/components/conversations/Header";
 import { NewChatModal } from "@/components/conversations/NewChatModal";
 import { Colors } from "@/constants/theme";
-import { dummyConversations } from "@/data/conversations";
+import { createConversation, getUserConversations } from "@/lib/messaging";
+import { User, ensureCurrentUserExists, testDatabaseConnection } from "@/lib/users";
 import { Conversation } from "@/types/conversation";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useState } from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import useSpotifyAuth from "../spotify/useSpotifyAuth";
 
@@ -22,6 +23,7 @@ export default function Home() {
   );
   const [isNewChatModalVisible, setIsNewChatModalVisible] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const router = useRouter();
 
   // Check for valid token and redirect if none exists
@@ -35,30 +37,95 @@ export default function Home() {
     checkAuth();
   }, []);
 
-  // Load conversations from AsyncStorage
+  // Ensure current user exists in database
+  useEffect(() => {
+    const initializeUser = async () => {
+      try {
+        const userRecord = await ensureCurrentUserExists();
+        setCurrentUser(userRecord);
+        console.log('Current user initialized:', userRecord);
+      } catch (error) {
+        console.error('Error initializing user:', error);
+        Alert.alert(
+          'Database Error',
+          'Could not connect to the database. Please check your internet connection and try again.',
+          [{ text: 'OK' }]
+        );
+      }
+    };
+    
+    if (user) {
+      initializeUser();
+    }
+  }, [user]);
+
+  // Load conversations from Supabase and add avatars
   useEffect(() => {
     const loadConversations = async () => {
       try {
-        const storedConversations = await AsyncStorage.getItem(
-          "@conversations"
+        const realConversations = await getUserConversations();
+        
+        // Add avatars to conversations based on participants
+        const conversationsWithAvatars = await Promise.all(
+          realConversations.map(async (conv) => {
+            if (conv.participants && conv.participants.length > 0) {
+              // Try to get real user avatars from the database
+              const { getAllUsers } = await import('@/lib/users');
+              const allUsers = await getAllUsers();
+              
+              const avatars = conv.participants.map(email => {
+                // Find user in database first
+                const user = allUsers.find(u => u.email === email);
+                if (user && user.profile_image) {
+                  return user.profile_image;
+                }
+                // Fallback to generated avatar
+                return `https://api.dicebear.com/7.x/avataaars/png?seed=${email}`;
+              });
+              
+              return {
+                ...conv,
+                avatars,
+                lastMessage: conv.lastMessage || '',
+                time: conv.updated_at ? new Date(conv.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'now'
+              };
+            }
+            return conv;
+          })
         );
-        if (storedConversations) {
-          setConversations(JSON.parse(storedConversations));
-        } else {
-          // If no conversations in storage, load dummy data initially
-          setConversations(dummyConversations);
-        }
+        
+        setConversations(conversationsWithAvatars);
+        
+        // Also save to AsyncStorage as cache
+        await AsyncStorage.setItem(
+          "@conversations",
+          JSON.stringify(conversationsWithAvatars)
+        );
       } catch (error) {
         console.error("Error loading conversations:", error);
-        // Fallback to dummy data on error
-        setConversations(dummyConversations);
+        
+        // Fallback to cached conversations
+        try {
+          const storedConversations = await AsyncStorage.getItem(
+            "@conversations"
+          );
+          if (storedConversations) {
+            setConversations(JSON.parse(storedConversations));
+          }
+        } catch (cacheError) {
+          console.error("Error loading cached conversations:", cacheError);
+          setConversations([]);
+        }
       }
     };
 
     loadConversations();
   }, []);
 
-  // Save conversations to AsyncStorage whenever they change, excluding dummy data check
+  // Ref to track if initial conversations have been loaded
+  const hasLoadedInitial = React.useRef(false);
+
+  // Save conversations to AsyncStorage whenever they change
   useEffect(() => {
     const saveConversations = async () => {
       try {
@@ -71,23 +138,14 @@ export default function Home() {
       }
     };
 
-    // Only save if conversations state has been populated (either from storage or dummy)
-    if (
-      conversations.length > 0 ||
-      (conversations.length === 0 && hasLoadedInitial.current)
-    ) {
-      // Added hasLoadedInitial ref check
+    if (conversations.length > 0 || hasLoadedInitial.current) {
       saveConversations();
     }
 
-    if (conversations.length > 0 && !hasLoadedInitial.current) {
-      // Set the ref once conversations are loaded
+    if (conversations.length >= 0 && !hasLoadedInitial.current) {
       hasLoadedInitial.current = true;
     }
   }, [conversations]);
-
-  // Ref to track if initial conversations have been loaded
-  const hasLoadedInitial = React.useRef(false);
 
   // Update profile image whenever user data changes
   useEffect(() => {
@@ -128,32 +186,90 @@ export default function Home() {
     refreshUser();
   }, []);
 
-  const handleNewChat = (emails: string[], groupName: string) => {
-    // Create a new conversation
-    const newConversation: Conversation = {
-      id: Date.now().toString(), // Generate a unique ID
-      name: groupName || emails.join(", "), // Use group name or emails as name
-      lastMessage: "Chat created", // Initial message
-      time: "Just now",
-      avatars: emails.map(
-        (email) => `https://api.dicebear.com/7.x/avataaars/png?seed=${email}`
-      ), // Generate avatars for each email
-      hasUnread: true,
-      participants: emails, // Store the emails for reference
-    };
+  const handleNewChat = async (selectedUser: User) => {
+    try {
+      if (!currentUser) {
+        Alert.alert('Error', 'You must be logged in to start a chat');
+        return;
+      }
+      
+      const conversationName = selectedUser.display_name;
+      const participants = [currentUser.email, selectedUser.email];
+      
+      // Check if conversation already exists with these participants
+      const existingConversation = conversations.find(conv => {
+        if (conv.participants && conv.participants.length === 2) {
+          return conv.participants.includes(currentUser.email) && 
+                 conv.participants.includes(selectedUser.email);
+        }
+        return false;
+      });
 
-    // Add the new conversation to the list
-    setConversations([newConversation, ...conversations]);
-    setIsNewChatModalVisible(false);
+      if (existingConversation) {
+        console.log('Found existing conversation:', existingConversation.id);
+        setIsNewChatModalVisible(false);
+        // Navigate to existing conversation
+        router.push('/message');
+        return;
+      }
+      
+      console.log('Creating conversation:', {
+        name: conversationName,
+        participants,
+        createdBy: currentUser.email
+      });
+      
+      // Create conversation in Supabase
+      const newConversation = await createConversation(
+        conversationName,
+        participants,
+        currentUser.email
+      );
+
+      console.log('Conversation created:', newConversation);
+
+      // Add avatars for display
+      const conversationWithAvatars = {
+        ...newConversation,
+        avatars: [
+          currentUser.profile_image || `https://api.dicebear.com/7.x/avataaars/png?seed=${currentUser.email}`,
+          selectedUser.profile_image || `https://api.dicebear.com/7.x/avataaars/png?seed=${selectedUser.email}`
+        ],
+        lastMessage: '',
+        time: 'now'
+      };
+
+      // Add the new conversation to the list
+      setConversations([conversationWithAvatars, ...conversations]);
+      setIsNewChatModalVisible(false);
+      
+      // Navigate to the new conversation
+      setTimeout(() => {
+        router.push('/message');
+      }, 500);
+      
+    } catch (error) {
+      console.error('Error creating conversation:', error);
+      Alert.alert(
+        'Error', 
+        'Failed to create conversation. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
   };
 
-  const handleClearConversations = async () => {
+  const refreshConversations = async () => {
     try {
-      await AsyncStorage.removeItem("@conversations");
-      setConversations([]); // Clear the state as well
-      console.log("Conversations cleared from AsyncStorage");
+      const realConversations = await getUserConversations();
+      setConversations(realConversations);
+      
+      // Update cache
+      await AsyncStorage.setItem(
+        "@conversations",
+        JSON.stringify(realConversations)
+      );
     } catch (error) {
-      console.error("Error clearing conversations:", error);
+      console.error("Error refreshing conversations:", error);
     }
   };
 
@@ -176,14 +292,6 @@ export default function Home() {
         </View>
       </SafeAreaView>
 
-      {/* Temporary button to clear conversations */}
-      <TouchableOpacity
-        style={styles.clearButton}
-        onPress={handleClearConversations}
-      >
-        <Text style={styles.clearButtonText}>Clear Chats</Text>
-      </TouchableOpacity>
-
       <TouchableOpacity
         style={styles.fab}
         onPress={() => setIsNewChatModalVisible(true)}
@@ -195,6 +303,7 @@ export default function Home() {
         visible={isNewChatModalVisible}
         onClose={() => setIsNewChatModalVisible(false)}
         onSubmit={handleNewChat}
+        currentUser={currentUser}
       />
     </View>
   );
@@ -249,18 +358,5 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
-  },
-  clearButton: {
-    position: "absolute",
-    left: 20,
-    bottom: 20,
-    backgroundColor: "red",
-    padding: 10,
-    borderRadius: 5,
-    zIndex: 100,
-  },
-  clearButtonText: {
-    color: "white",
-    fontWeight: "bold",
   },
 });

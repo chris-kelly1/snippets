@@ -5,7 +5,7 @@ type GroupAvatarProps = {
   avatars: string[];
 }
 
-export const GroupAvatar = ({ avatars }: GroupAvatarProps) => {
+export const GroupAvatar = ({ avatars = [] }: GroupAvatarProps) => {
   if (avatars.length === 1) {
     return (
       <View style={styles.singleAvatar}>

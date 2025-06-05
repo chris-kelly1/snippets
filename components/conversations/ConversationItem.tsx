@@ -13,15 +13,12 @@ export const ConversationItem = ({ conversation }: ConversationItemProps) => {
   const router = useRouter();
 
   const handlePress = () => {
-    router.push({
-      pathname: '/message',
-      params: { conversationId: conversation.id }
-    });
+    router.push('/message');
   };
 
   return (
     <Pressable style={styles.conversationItem} onPress={handlePress}>
-      <GroupAvatar avatars={conversation.avatars} />
+      <GroupAvatar avatars={conversation.avatars || []} />
       
       <View style={styles.conversationContent}>
         <View style={styles.conversationHeader}>
