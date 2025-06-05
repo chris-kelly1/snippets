@@ -1,13 +1,14 @@
 import { Colors, FontSizes, FontWeights, Spacing } from "@/constants/theme";
 import { getConversationMessages } from "@/lib/messaging";
-import { Message } from "@/types/message";
 import { Conversation } from "@/types/conversation";
+import { Message } from "@/types/message";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { MotiView } from "moti";
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -19,7 +20,6 @@ import {
 } from "react-native";
 import { PanGestureHandler, State } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import getEnv from "../spotify/env";
 
 // Extended type for the message screen
@@ -78,13 +78,18 @@ const VISIBLE_CARDS = 3;
 const createCardDataFromMessages = (messages: Message[]): CardData[] => {
   if (!messages || messages.length === 0) return [];
 
-  return messages.slice(-5).reverse().map(message => ({
-    title: message.song_title || "Unknown Song",
-    artist: message.artist || "Unknown Artist",
-    lyrics: message.lyrics || ["No lyrics available"],
-    albumCover: message.album_cover || `https://api.dicebear.com/7.x/shapes/png?seed=${message.song_title}`,
-    audioUrl: message.audio_url,
-  }));
+  return messages
+    .slice(-5)
+    .reverse()
+    .map((message) => ({
+      title: message.song_title || "Unknown Song",
+      artist: message.artist || "Unknown Artist",
+      lyrics: message.lyrics || ["No lyrics available"],
+      albumCover:
+        message.album_cover ||
+        `https://api.dicebear.com/7.x/shapes/png?seed=${message.song_title}`,
+      audioUrl: message.audio_url,
+    }));
 };
 
 // Mapping function to create duplicates with UIDs for continuous rotation
@@ -164,10 +169,12 @@ const AnimatedCard = ({
   const isRight = i > length * 2 - 1 && i < length * 3;
 
   const iFromFirst = i - length;
-  
+
   // Audio setup
   const env = getEnv();
-  const audioUrl = card.audioUrl ? `${card.audioUrl}?apikey=${env.SUPABASE_ANON_KEY}` : undefined;
+  const audioUrl = card.audioUrl
+    ? `${card.audioUrl}?apikey=${env.SUPABASE_ANON_KEY}`
+    : undefined;
   const player = useAudioPlayer(audioUrl ? { uri: audioUrl } : undefined);
   const status = useAudioPlayerStatus(player);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
@@ -196,7 +203,15 @@ const AnimatedCard = ({
     } else if (!isFirst && isPlaying) {
       setPlayingCard(null);
     }
-  }, [isFirst, audioUrl, player, isPlayerReady, cardId, setPlayingCard, isPlaying]);
+  }, [
+    isFirst,
+    audioUrl,
+    player,
+    isPlayerReady,
+    cardId,
+    setPlayingCard,
+    isPlaying,
+  ]);
 
   // Play/pause logic
   useEffect(() => {
@@ -341,11 +356,19 @@ const AnimatedCard = ({
               />
               <View style={styles.lyricsContainer}>
                 {card.lyrics.slice(0, 3).map((lyric, index) => (
-                  <Text key={index} style={styles.songLyric}>{lyric}</Text>
+                  <Text key={index} style={styles.songLyric}>
+                    {lyric}
+                  </Text>
                 ))}
-                {card.lyrics.length < 3 && Array.from({ length: 3 - card.lyrics.length }).map((_, index) => (
-                  <Text key={`empty-${index}`} style={styles.songLyric}></Text>
-                ))}
+                {card.lyrics.length < 3 &&
+                  Array.from({ length: 3 - card.lyrics.length }).map(
+                    (_, index) => (
+                      <Text
+                        key={`empty-${index}`}
+                        style={styles.songLyric}
+                      ></Text>
+                    )
+                  )}
                 <Text style={styles.songMeta}>
                   {card.title} - {card.artist}
                 </Text>
@@ -379,16 +402,17 @@ export default function MessageScreen() {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
+  const [currentConversation, setCurrentConversation] =
+    useState<Conversation | null>(null);
   const [playingCard, setPlayingCard] = useState<string | null>(null);
 
   // Load messages on mount and set up polling
   useEffect(() => {
     loadMessages();
-    
+
     // Poll for new messages every 500ms for more responsiveness
     const interval = setInterval(loadMessages, 500);
-    
+
     return () => clearInterval(interval);
   }, []);
 
@@ -398,7 +422,7 @@ export default function MessageScreen() {
       const storedConversations = await AsyncStorage.getItem("@conversations");
       let conversation = null;
       let conversationId = "00000000-0000-0000-0000-000000000001"; // fallback UUID
-      
+
       if (storedConversations) {
         const conversations = JSON.parse(storedConversations);
         if (conversations.length > 0) {
@@ -408,7 +432,9 @@ export default function MessageScreen() {
         }
       }
 
-      const conversationMessages = await getConversationMessages(conversationId);
+      const conversationMessages = await getConversationMessages(
+        conversationId
+      );
       setMessages(conversationMessages);
     } catch (error) {
       console.error("Error loading messages:", error);
@@ -422,13 +448,16 @@ export default function MessageScreen() {
     if (!currentConversation) return null;
 
     // Get the latest message for current song info
-    const latestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
-    const currentSong = latestMessage ? {
-      title: latestMessage.song_title,
-      artist: latestMessage.artist,
-      lyrics: latestMessage.lyrics,
-      albumCover: latestMessage.album_cover || "",
-    } : undefined;
+    const latestMessage =
+      messages.length > 0 ? messages[messages.length - 1] : null;
+    const currentSong = latestMessage
+      ? {
+          title: latestMessage.song_title,
+          artist: latestMessage.artist,
+          lyrics: latestMessage.lyrics,
+          albumCover: latestMessage.album_cover || "",
+        }
+      : undefined;
 
     return {
       id: currentConversation.id,
@@ -536,8 +565,8 @@ export default function MessageScreen() {
 
           {/* Animated Card Stack - Show only if cards exist */}
           {cards.length > 0 ? (
-            <CardStack 
-              cards={cards} 
+            <CardStack
+              cards={cards}
               playingCard={playingCard}
               setPlayingCard={setPlayingCard}
             />
