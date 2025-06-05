@@ -56,6 +56,10 @@ type CardData = {
   lyrics: string[];
   albumCover: string;
   audioUrl?: string;
+  timestamp: string;
+  senderName: string;
+  senderAvatar: string;
+  senderId: string;
 };
 
 type CardItem = {
@@ -94,21 +98,50 @@ interface ParticipantUIData {
 }
 
 // Create card data from messages (most recent first)
-const createCardDataFromMessages = (messages: Message[]): CardData[] => {
+const createCardDataFromMessages = (
+  messages: Message[],
+  allUsers: User[]
+): CardData[] => {
   if (!messages || messages.length === 0) return [];
 
   return messages
     .slice(-5)
     .reverse()
-    .map((message) => ({
-      title: message.song_title || "Unknown Song",
-      artist: message.artist || "Unknown Artist",
-      lyrics: message.lyrics || ["No lyrics available"],
-      albumCover:
-        message.album_cover ||
-        `https://api.dicebear.com/7.x/shapes/png?seed=${message.song_title}`,
-      audioUrl: message.audio_url,
-    }));
+    .map((message) => {
+      // Find the sender user data
+      const senderUser = allUsers.find(
+        (user) =>
+          user.id === message.sender_id || user.email === message.sender_email
+      );
+
+      // Format timestamp
+      const timestamp = new Date(message.created_at).toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+
+      return {
+        title: message.song_title || "Unknown Song",
+        artist: message.artist || "Unknown Artist",
+        lyrics: message.lyrics || ["No lyrics available"],
+        albumCover:
+          message.album_cover ||
+          `https://api.dicebear.com/7.x/shapes/png?seed=${message.song_title}`,
+        audioUrl: message.audio_url,
+        timestamp,
+        senderName:
+          senderUser?.display_name ||
+          message.sender_name ||
+          message.sender_email.split("@")[0],
+        senderAvatar:
+          senderUser?.profile_image ||
+          `https://api.dicebear.com/7.x/avataaars/png?seed=${message.sender_email}`,
+        senderId: message.sender_id,
+      };
+    });
 };
 
 // Mapping function to create duplicates with UIDs for continuous rotation
@@ -337,6 +370,18 @@ const AnimatedCard = ({
         >
           <View style={styles.cardContent}>
             <View style={styles.cardInner}>
+              {/* Header with profile photo and timestamp */}
+              <View style={styles.cardHeader}>
+                <View style={styles.senderInfo}>
+                  <Image
+                    source={{ uri: card.senderAvatar }}
+                    style={styles.senderAvatar}
+                  />
+                  <Text style={styles.senderName}>{card.senderName}</Text>
+                </View>
+                <Text style={styles.timestamp}>{card.timestamp}</Text>
+              </View>
+
               <Image
                 source={{ uri: card.albumCover }}
                 style={styles.albumCover}
@@ -533,8 +578,8 @@ export default function MessageScreen() {
 
   // Create card data from messages (cards are now independent of user data)
   const cards = useMemo(() => {
-    return createCardDataFromMessages(messages);
-  }, [messages]);
+    return createCardDataFromMessages(messages, allUsers);
+  }, [messages, allUsers]);
 
   // Conditional rendering based on loading/error state
   if (loading) {
@@ -759,6 +804,32 @@ const styles = StyleSheet.create({
     padding: 20,
     height: "100%",
     justifyContent: "space-between",
+  },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    width: "100%",
+    marginBottom: 12,
+  },
+  senderInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  senderAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  senderName: {
+    color: Colors.text.primary,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  timestamp: {
+    color: Colors.text.secondary,
+    fontSize: 10,
   },
   albumCover: {
     width: 80,

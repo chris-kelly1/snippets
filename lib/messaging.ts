@@ -1,7 +1,7 @@
-import { Message, CreateMessageRequest } from '@/types/message';
-import { Conversation } from '@/types/conversation';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from './supabase';
+import { Conversation } from "@/types/conversation";
+import { CreateMessageRequest, Message } from "@/types/message";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { supabase } from "./supabase";
 
 export const createConversation = async (
   name: string,
@@ -9,10 +9,14 @@ export const createConversation = async (
   createdBy: string
 ): Promise<Conversation> => {
   try {
-    console.log('Creating conversation via Supabase:', { name, participants, createdBy });
+    console.log("Creating conversation via Supabase:", {
+      name,
+      participants,
+      createdBy,
+    });
 
     const { data, error } = await supabase
-      .from('conversations')
+      .from("conversations")
       .insert({
         name,
         participants,
@@ -22,46 +26,48 @@ export const createConversation = async (
       .single();
 
     if (error) {
-      console.error('Error creating conversation:', error);
+      console.error("Error creating conversation:", error);
       throw error;
     }
 
-    console.log('Conversation created successfully:', data);
+    console.log("Conversation created successfully:", data);
     return data;
   } catch (error) {
-    console.error('Error creating conversation:', error);
+    console.error("Error creating conversation:", error);
     throw error;
   }
 };
 
-export const sendMessage = async (messageRequest: CreateMessageRequest): Promise<Message> => {
+export const sendMessage = async (
+  messageRequest: CreateMessageRequest
+): Promise<Message> => {
   try {
-    console.log('Sending message via Supabase:', messageRequest);
-    
-    const user = await AsyncStorage.getItem('@spotify_user');
+    console.log("Sending message via Supabase:", messageRequest);
+
+    const user = await AsyncStorage.getItem("@spotify_user");
     if (!user) {
-      throw new Error('User not authenticated - please log in again');
+      throw new Error("User not authenticated - please log in again");
     }
-    
+
     const userData = JSON.parse(user);
-    console.log('Current user data:', userData);
-    
+    console.log("Current user data:", userData);
+
     // Validate required fields
     if (!messageRequest.conversation_id) {
-      throw new Error('Conversation ID is required');
+      throw new Error("Conversation ID is required");
     }
-    
+
     if (!messageRequest.lyrics || messageRequest.lyrics.length === 0) {
-      throw new Error('Lyrics are required');
+      throw new Error("Lyrics are required");
     }
 
     const { data, error } = await supabase
-      .from('messages')
+      .from("messages")
       .insert({
         conversation_id: messageRequest.conversation_id,
         sender_id: userData.id,
         sender_email: userData.email,
-        sender_name: userData.display_name || userData.email.split('@')[0],
+        sender_name: userData.display_name || userData.email.split("@")[0],
         lyrics: messageRequest.lyrics,
         song_title: messageRequest.song_title,
         artist: messageRequest.artist,
@@ -73,64 +79,69 @@ export const sendMessage = async (messageRequest: CreateMessageRequest): Promise
       .single();
 
     if (error) {
-      console.error('Error sending message:', error);
+      console.error("Error sending message:", error);
       throw error;
     }
 
-    console.log('Message sent successfully:', data);
+    console.log("Message sent successfully:", data);
     return data;
   } catch (error) {
-    console.error('Error sending message:', error);
+    console.error("Error sending message:", error);
     throw error;
   }
 };
 
-export const getConversationMessages = async (conversationId: string): Promise<Message[]> => {
+export const getConversationMessages = async (
+  conversationId: string
+): Promise<Message[]> => {
   try {
-    console.log('Fetching messages for conversation via Supabase:', conversationId);
+    //console.log('Fetching messages for conversation via Supabase:', conversationId);
 
     const { data: messages, error } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true });
+      .from("messages")
+      .select("*")
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: true });
 
     if (error) {
-      console.error('Error fetching messages:', error);
+      console.error("Error fetching messages:", error);
       throw error;
     }
 
-    console.log('Fetched messages via Supabase:', messages.length);
+    //console.log("Fetched messages via Supabase:", messages.length);
     return messages || [];
   } catch (error) {
-    console.error('Error fetching messages:', error);
+    console.error("Error fetching messages:", error);
     throw error;
   }
 };
 
 export const getUserConversations = async (): Promise<Conversation[]> => {
   try {
-    const user = await AsyncStorage.getItem('@spotify_user');
+    const user = await AsyncStorage.getItem("@spotify_user");
     if (!user) return [];
-    
+
     const userData = JSON.parse(user);
-    console.log('Fetching conversations for user via Supabase:', userData.email);
+    console.log(
+      "Fetching conversations for user via Supabase:",
+      userData.email
+    );
 
     const { data: conversations, error } = await supabase
-      .from('conversations')
-      .select('*')
-      .contains('participants', [userData.email])
-      .order('created_at', { ascending: false });
+      .from("conversations")
+      .select("*")
+      .contains("participants", [userData.email])
+      .order("created_at", { ascending: false });
 
     if (error) {
-      console.error('Error fetching conversations:', error);
+      console.error("Error fetching conversations:", error);
       throw error;
     }
 
-    console.log('Fetched conversations via Supabase:', conversations.length);
+    console.log("Fetched conversations via Supabase:", conversations.length);
     return conversations || [];
   } catch (error) {
-    console.error('Error fetching conversations:', error);
+    console.error("Error fetching conversations:", error);
     return [];
   }
 };
@@ -140,20 +151,23 @@ export const subscribeToConversationMessages = (
   conversationId: string,
   callback: (message: Message) => void
 ) => {
-  console.log('Setting up real-time subscription for conversation:', conversationId);
-  
+  console.log(
+    "Setting up real-time subscription for conversation:",
+    conversationId
+  );
+
   const subscription = supabase
     .channel(`conversation-${conversationId}`)
     .on(
-      'postgres_changes',
+      "postgres_changes",
       {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
+        event: "INSERT",
+        schema: "public",
+        table: "messages",
         filter: `conversation_id=eq.${conversationId}`,
       },
       (payload) => {
-        console.log('New message received:', payload.new);
+        console.log("New message received:", payload.new);
         callback(payload.new as Message);
       }
     )
@@ -161,8 +175,8 @@ export const subscribeToConversationMessages = (
 
   return {
     unsubscribe: () => {
-      console.log('Unsubscribing from conversation messages');
+      console.log("Unsubscribing from conversation messages");
       supabase.removeChannel(subscription);
-    }
+    },
   };
 };
