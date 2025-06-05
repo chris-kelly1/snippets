@@ -35,7 +35,7 @@ export const ConversationFilters = ({
 const styles = StyleSheet.create({
   filtersWrapper: {
     height: 38,
-    marginBottom: 0,
+    marginBottom: 16,
   },
   filterContainer: {
     paddingHorizontal: 15,
