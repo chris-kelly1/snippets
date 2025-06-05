@@ -52,16 +52,8 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
 
   const { CLIENT_ID, CLIENT_SECRET, SCOPES, SPOTIFY_API } = getEnv();
 
-  // Get the app's scheme from app.json
-  const scheme = "snippets";
-
-  // Generate the appropriate redirect URI based on the environment
-  const redirectUri = makeRedirectUri({
-    scheme,
-    path: "auth",
-    preferLocalhost: true,
-    native: `${scheme}://auth`,
-  });
+  // Use a simple, consistent redirect URI
+  const redirectUri = "snippets://auth";
 
   const [request, response, promptAsync] = useAuthRequest(
     {
@@ -78,7 +70,6 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
   );
 
   const handleAuthenticationResponse = async (authResponse: any) => {
-    console.log("🚀 handleAuthenticationResponse called with:", authResponse?.type);
     if (authResponse?.type === "success") {
       const { code } = authResponse.params;
 
@@ -96,171 +87,86 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
           SPOTIFY_API.DISCOVERY
         );
 
-        console.log("Token response from Spotify exchangeCodeAsync:", tokenResponse);
-
-        // Retrieve access token property – the key differs depending on expo-auth-session version
-        const accessToken =
-          (tokenResponse as any).accessToken ??
-          (tokenResponse as any).access_token ??
-          (tokenResponse as any).token ??
-          null;
-
-        console.log("Resolved accessToken:", accessToken);
-
+        const accessToken = (tokenResponse as any).accessToken || (tokenResponse as any).access_token;
+        
         if (!accessToken) {
-          throw new Error("Unable to resolve access token from Spotify response");
+          throw new Error("No access token received");
         }
 
-        // Fetch user profile data first
-        try {
-          console.log("Fetching https://api.spotify.com/v1/me with token header...");
-          console.log("Authorization header:", `Bearer ${accessToken.substring(0, 20)}...`);
+        const userResponse = await fetch("https://api.spotify.com/v1/me", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
 
-          // First, try a simple endpoint to test token validity
-          console.log("Testing token with simpler endpoint first...");
-          const testResponse = await fetch("https://api.spotify.com/v1/markets", {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          });
-          console.log("Markets endpoint response status:", testResponse.status);
-          if (!testResponse.ok) {
-            const errorText = await testResponse.text();
-            console.log("Markets endpoint error body:", errorText);
-          }
-
-          const userResponse = await fetch("https://api.spotify.com/v1/me", {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          });
-
-          if (!userResponse.ok) {
-            console.error("/me request failed", userResponse.status, userResponse.statusText);
-            const errorBody = await userResponse.text();
-            console.error("Error response body:", errorBody);
-            throw new Error(
-              `Failed to fetch user data: ${userResponse.status} ${userResponse.statusText}`
-            );
-          }
-
-          const userData = await userResponse.json();
-          const spotifyUser = {
-            display_name: userData.display_name,
-            email: userData.email,
-            id: userData.id,
-            profile_image:
-              userData.images?.length > 0 ? userData.images[0].url : undefined,
-          };
-
-          // Insert or update user in Supabase
-          const { error: supabaseError } = await supabase.from("users").upsert({
-            id: spotifyUser.id,
-            display_name: spotifyUser.display_name,
-            email: spotifyUser.email,
-            profile_image: spotifyUser.profile_image,
-          });
-
-          if (supabaseError) {
-            console.error("Error saving user to Supabase:", supabaseError);
-          }
-
-          // Set both token and user data together
-          setToken(accessToken);
-          setUser(spotifyUser);
-
-          // Store both token and user data in AsyncStorage
-          await Promise.all([
-            AsyncStorage.setItem(STORAGE_KEYS.TOKEN, accessToken),
-            AsyncStorage.setItem(
-              STORAGE_KEYS.USER,
-              JSON.stringify(spotifyUser)
-            ),
-          ]);
-        } catch (err) {
-          console.error("Error in user data fetch:", err);
-          setError(
-            err instanceof Error ? err : new Error("Failed to fetch user data")
-          );
+        if (!userResponse.ok) {
+          throw new Error(`Failed to fetch user: ${userResponse.status}`);
         }
+
+        const userData = await userResponse.json();
+        const spotifyUser = {
+          display_name: userData.display_name,
+          email: userData.email,
+          id: userData.id,
+          profile_image: userData.images?.[0]?.url,
+        };
+
+        await supabase.from("users").upsert({
+          id: spotifyUser.id,
+          display_name: spotifyUser.display_name,
+          email: spotifyUser.email,
+          profile_image: spotifyUser.profile_image,
+        });
+
+        setToken(accessToken);
+        setUser(spotifyUser);
+
+        await Promise.all([
+          AsyncStorage.setItem(STORAGE_KEYS.TOKEN, accessToken),
+          AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(spotifyUser)),
+        ]);
       } catch (err) {
-        console.error("Token exchange failed:", err);
-        setError(
-          err instanceof Error ? err : new Error("Token exchange failed")
-        );
+        setError(err instanceof Error ? err : new Error("Authentication failed"));
       }
     } else if (authResponse?.type === "error") {
-      console.error("Auth Error:", {
-        error: authResponse.error,
-        errorCode: authResponse.error?.code,
-        errorMessage: authResponse.error?.message,
-      });
-      setError(
-        new Error(authResponse.error?.message || "Authentication failed")
-      );
+      setError(new Error(authResponse.error?.message || "Authentication failed"));
     } else if (authResponse?.type === "cancel") {
-      console.log("Authentication was cancelled.");
-      setToken(null);
-      setUser(null);
-      setError(new Error("Authentication was cancelled"));
+      setError(new Error("Authentication cancelled"));
     }
   };
 
-  // Validate token by testing it against Spotify API
   const validateToken = async (tokenToValidate: string): Promise<boolean> => {
-    console.log("🔍 validateToken called with token:", tokenToValidate?.substring(0, 20) + "...");
     try {
       const response = await fetch("https://api.spotify.com/v1/me", {
-        headers: {
-          Authorization: `Bearer ${tokenToValidate}`,
-        },
+        headers: { Authorization: `Bearer ${tokenToValidate}` },
       });
-      console.log("🔍 validateToken response status:", response.status);
       return response.ok;
-    } catch (error) {
-      console.error("Token validation failed:", error);
+    } catch {
       return false;
     }
   };
 
-  // Load persisted auth state on mount
   useEffect(() => {
     const loadPersistedAuth = async () => {
-      console.log("📱 loadPersistedAuth starting...");
       try {
         const [storedToken, storedUser] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.TOKEN),
           AsyncStorage.getItem(STORAGE_KEYS.USER),
         ]);
 
-        console.log("Stored auth data:", {
-          hasToken: !!storedToken,
-          hasUser: !!storedUser,
-          userData: storedUser ? JSON.parse(storedUser) : null,
-        });
-
         if (storedToken && storedUser) {
-          console.log("📱 Found stored credentials, validating token...");
-          // Validate the stored token
           const isValidToken = await validateToken(storedToken);
           
           if (isValidToken) {
             setToken(storedToken);
             setUser(JSON.parse(storedUser));
-            console.log("✅ Stored Spotify token is valid");
           } else {
-            console.log("❌ Stored Spotify token is invalid/expired, clearing auth");
-            // Clear invalid token
             await Promise.all([
               AsyncStorage.removeItem(STORAGE_KEYS.TOKEN),
               AsyncStorage.removeItem(STORAGE_KEYS.USER),
             ]);
-            setToken(null);
-            setUser(null);
           }
         }
       } catch (err) {
-        console.error("Error loading persisted auth:", err);
+        console.error("Error loading auth:", err);
       } finally {
         setIsLoading(false);
       }
