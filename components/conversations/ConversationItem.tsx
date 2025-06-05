@@ -1,38 +1,38 @@
-import { Colors, FontSizes, FontWeights, Spacing } from '@/constants/theme';
-import { Conversation } from '@/types/conversation';
-import { useRouter } from 'expo-router';
-import React from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { GroupAvatar } from './GroupAvatar';
+import { Colors, FontSizes, FontWeights, Spacing } from "@/constants/theme";
+import { Conversation } from "@/types/conversation";
+import { useRouter } from "expo-router";
+import React from "react";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { GroupAvatar } from "./GroupAvatar";
 
 type ConversationItemProps = {
   conversation: Conversation;
-}
+};
 
 export const ConversationItem = ({ conversation }: ConversationItemProps) => {
   const router = useRouter();
 
   const handlePress = () => {
-    router.push('/message');
+    router.push({ pathname: "/message", params: { id: conversation.id } });
   };
 
   return (
     <Pressable style={styles.conversationItem} onPress={handlePress}>
       <GroupAvatar avatars={conversation.avatars || []} />
-      
+
       <View style={styles.conversationContent}>
         <View style={styles.conversationHeader}>
           <Text style={styles.conversationName}>{conversation.name}</Text>
           <Text style={styles.conversationTime}>{conversation.time}</Text>
         </View>
-        
+
         <View style={styles.messageContainer}>
           {conversation.songTitle && conversation.lastMessage ? (
             <View style={styles.songMessageContainer}>
               {conversation.albumCover && (
-                <Image 
-                  source={{ uri: conversation.albumCover }} 
-                  style={styles.albumCover} 
+                <Image
+                  source={{ uri: conversation.albumCover }}
+                  style={styles.albumCover}
                 />
               )}
               <View style={styles.songTextContainer}>
@@ -53,10 +53,8 @@ export const ConversationItem = ({ conversation }: ConversationItemProps) => {
               No messages yet
             </Text>
           )}
-          
-          {conversation.hasUnread && (
-            <View style={styles.unreadIndicator} />
-          )}
+
+          {conversation.hasUnread && <View style={styles.unreadIndicator} />}
         </View>
       </View>
     </Pressable>
@@ -65,7 +63,7 @@ export const ConversationItem = ({ conversation }: ConversationItemProps) => {
 
 const styles = StyleSheet.create({
   conversationItem: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginBottom: 25,
     marginTop: 5,
   },
@@ -74,9 +72,9 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.md,
   },
   conversationHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: Spacing.xs,
   },
   conversationName: {
@@ -89,14 +87,14 @@ const styles = StyleSheet.create({
     color: Colors.text.secondary,
   },
   messageContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: Spacing.sm,
   },
   songMessageContainer: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   albumCover: {
     width: 30,
@@ -106,7 +104,7 @@ const styles = StyleSheet.create({
   },
   songTextContainer: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   conversationMessage: {
     fontSize: FontSizes.md,
@@ -116,15 +114,15 @@ const styles = StyleSheet.create({
   lyricsPreview: {
     fontSize: FontSizes.md,
     flex: 1,
-    color: '#7EB6FF',
-    fontStyle: 'italic',
+    color: "#7EB6FF",
+    fontStyle: "italic",
     fontWeight: FontWeights.medium,
   },
   noMessages: {
     fontSize: FontSizes.md,
     flex: 1,
     color: Colors.text.secondary,
-    fontStyle: 'italic',
+    fontStyle: "italic",
   },
   unreadIndicator: {
     width: 8,
@@ -137,4 +135,4 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
     color: Colors.text.secondary,
   },
-}); 
+});

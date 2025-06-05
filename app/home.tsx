@@ -220,76 +220,88 @@ export default function Home() {
     refreshUser();
   }, []);
 
-  const handleNewChat = async (selectedUser: User) => {
+  // Renamed and modified to handle both 1-on-1 and group chats
+  const handleCreateConversation = async (
+    selectedUsers: User[],
+    groupName: string
+  ) => {
     try {
       if (!currentUser) {
         Alert.alert("Error", "You must be logged in to start a chat");
         return;
       }
 
-      const conversationName = selectedUser.display_name;
-      const participants = [currentUser.email, selectedUser.email];
+      // Always include the current user in the participants list
+      const participantEmails = [
+        currentUser.email,
+        ...selectedUsers.map((user) => user.email),
+      ];
 
-      // Check if conversation already exists with these participants
-      const existingConversation = conversations.find((conv) => {
-        if (conv.participants && conv.participants.length === 2) {
-          return (
-            conv.participants.includes(currentUser.email) &&
-            conv.participants.includes(selectedUser.email)
-          );
-        }
-        return false;
-      });
+      let conversationName = groupName.trim();
 
-      if (existingConversation) {
-        console.log("Found existing conversation:", existingConversation.id);
-        setIsNewChatModalVisible(false);
-        // Navigate to existing conversation
-        router.push("/message");
+      // Handle 1-on-1 chat case: Use the other user's name if no group name provided
+      if (selectedUsers.length === 1 && conversationName === "") {
+        conversationName =
+          selectedUsers[0].display_name || selectedUsers[0].email.split("@")[0];
+      }
+
+      // Ensure group name is not empty for group chats (>2 participants)
+      if (participantEmails.length > 2 && conversationName === "") {
+        Alert.alert("Error", "Group name is required for group chats.");
         return;
+      }
+
+      // Optional: Check for existing 1-on-1 conversation
+      if (selectedUsers.length === 1) {
+        const otherUserEmail = selectedUsers[0].email;
+        const existingConversation = conversations.find((conv) => {
+          if (conv.participants && conv.participants.length === 2) {
+            return (
+              conv.participants.includes(currentUser.email) &&
+              conv.participants.includes(otherUserEmail)
+            );
+          }
+          return false;
+        });
+
+        if (existingConversation) {
+          console.log(
+            "Found existing 1-on-1 conversation:",
+            existingConversation.id
+          );
+          setIsNewChatModalVisible(false);
+          router.push({
+            pathname: "/message",
+            params: { id: existingConversation.id },
+          });
+          return;
+        }
       }
 
       console.log("Creating conversation:", {
         name: conversationName,
-        participants,
+        participants: participantEmails,
         createdBy: currentUser.email,
       });
 
       // Create conversation in Supabase
       const newConversation = await createConversation(
         conversationName,
-        participants,
+        participantEmails,
         currentUser.email
       );
 
-      console.log("Conversation created:", newConversation);
+      console.log("Conversation created successfully:", newConversation);
 
-      // Add avatars for display
-      const conversationWithAvatars = {
-        ...newConversation,
-        avatars: [
-          currentUser.profile_image ||
-            `https://api.dicebear.com/7.x/avataaars/png?seed=${currentUser.email}`,
-          selectedUser.profile_image ||
-            `https://api.dicebear.com/7.x/avataaars/png?seed=${selectedUser.email}`,
-        ],
-        lastMessage: "",
-        time: "now",
-      };
-
-      // Add the new conversation to the list
-      setConversations([conversationWithAvatars, ...conversations]);
+      // Close modal and navigate to the new conversation
       setIsNewChatModalVisible(false);
+      router.push({ pathname: "/message", params: { id: newConversation.id } });
 
-      // Navigate to the new conversation
-      setTimeout(() => {
-        router.push("/message");
-      }, 500);
+      // Refresh conversations list on home screen
+      refreshConversations();
     } catch (error) {
       console.error("Error creating conversation:", error);
-      Alert.alert("Error", "Failed to create conversation. Please try again.", [
-        { text: "OK" },
-      ]);
+      Alert.alert("Error", "Failed to create conversation. Please try again.");
     }
   };
 
@@ -337,8 +349,9 @@ export default function Home() {
       <NewChatModal
         visible={isNewChatModalVisible}
         onClose={() => setIsNewChatModalVisible(false)}
-        onSubmit={handleNewChat}
-        currentUser={currentUser}
+        // Pass selected users and group name to the handler
+        onSubmit={handleCreateConversation}
+        currentUser={currentUser} // Pass the current user as well
       />
     </View>
   );
