@@ -19,22 +19,74 @@ import {
   StyleSheet,
   Text,
   View,
+  TouchableOpacity,
+  Modal,
+  FlatList,
 } from "react-native";
 
 const { width } = Dimensions.get("window");
+
+// Mock users for development
+const mockUsers = [
+  {
+    id: "calvin",
+    display_name: "Calvin Laughlin",
+    email: "laughlincalvin22@gmail.com",
+    profile_image: "https://i.scdn.co/image/ab6775700000ee85c588066682c09323acbe12fd"
+  },
+  {
+    id: "reid",
+    display_name: "Reid McCaw", 
+    email: "rmccaw@stanford.edu",
+    profile_image: "https://api.dicebear.com/7.x/avataaars/png?seed=reid"
+  },
+  {
+    id: "testuser",
+    display_name: "Test User",
+    email: "test@example.com", 
+    profile_image: "https://api.dicebear.com/7.x/avataaars/png?seed=test"
+  }
+];
 
 export default function LaunchScreen() {
   const router = useRouter();
   const { login, error, isLoading, token } = useSpotifyAuth();
   const [tempError, setTempError] = useState<string | null>(null);
+  const [showUserSelect, setShowUserSelect] = useState(false);
 
   const [fontsLoaded] = useFonts({
     DMSans_400Regular,
     DMSans_700Bold,
   });
 
+  const clearAuthData = async () => {
+    await AsyncStorage.multiRemove(['@spotify_token', '@spotify_user', '@conversations']);
+    console.log('✅ Auth data cleared');
+  };
+
+  const handleBypassAuth = async (user: typeof mockUsers[0]) => {
+    try {
+      // Clear any existing auth data
+      await clearAuthData();
+      
+      // Set mock user data
+      await Promise.all([
+        AsyncStorage.setItem("@spotify_token", "mock-token-" + Date.now()),
+        AsyncStorage.setItem("@spotify_user", JSON.stringify(user)),
+      ]);
+
+      console.log('✅ Bypassed auth with user:', user.display_name);
+      router.replace("/home");
+    } catch (err) {
+      console.error("Bypass auth error:", err);
+    }
+  };
+
   const handleSpotifyLogin = async () => {
     try {
+      // Uncomment this line to clear auth data before login
+      // await clearAuthData();
+      
       await login();
 
       // Wait for token to be set in storage
@@ -132,9 +184,56 @@ export default function LaunchScreen() {
                   </Text>
                 </View>
               </Button>
+              
+              {/* Bypass Auth Button */}
+              <TouchableOpacity
+                style={styles.bypassButton}
+                onPress={() => setShowUserSelect(true)}
+              >
+                <Text style={styles.bypassText}>Development: Skip Auth</Text>
+              </TouchableOpacity>
+              
               {tempError && <Text style={styles.errorText}>{tempError}</Text>}
             </View>
           </View>
+
+          {/* User Selection Modal */}
+          <Modal
+            visible={showUserSelect}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setShowUserSelect(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>Choose User to Impersonate</Text>
+                
+                <FlatList
+                  data={mockUsers}
+                  keyExtractor={(item) => item.id}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.userItem}
+                      onPress={() => {
+                        setShowUserSelect(false);
+                        handleBypassAuth(item);
+                      }}
+                    >
+                      <Text style={styles.userName}>{item.display_name}</Text>
+                      <Text style={styles.userEmail}>{item.email}</Text>
+                    </TouchableOpacity>
+                  )}
+                />
+                
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={() => setShowUserSelect(false)}
+                >
+                  <Text style={styles.cancelText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
         </View>
       </ImageBackground>
     </>
@@ -231,5 +330,66 @@ const styles = StyleSheet.create({
     color: "red",
     textAlign: "center",
     marginTop: 10,
+  },
+  bypassButton: {
+    padding: 12,
+    borderRadius: 25,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.3)",
+    marginTop: 16,
+  },
+  bypassText: {
+    color: "white",
+    fontSize: 14,
+    textAlign: "center",
+    opacity: 0.8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    backgroundColor: "#1a1a1a",
+    borderRadius: 20,
+    padding: 24,
+    width: "85%",
+    maxHeight: "70%",
+  },
+  modalTitle: {
+    color: "white",
+    fontSize: 20,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  userItem: {
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  userName: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  userEmail: {
+    color: "rgba(255, 255, 255, 0.7)",
+    fontSize: 14,
+  },
+  cancelButton: {
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 12,
+  },
+  cancelText: {
+    color: "white",
+    fontSize: 16,
+    textAlign: "center",
   },
 });

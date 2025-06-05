@@ -1,11 +1,14 @@
 import { Colors } from "@/constants/theme";
+import { User, getAllUsers, searchUsers } from "@/lib/users";
 import { Ionicons } from "@expo/vector-icons";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
+  ActivityIndicator,
+  FlatList,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -16,36 +19,148 @@ import {
 interface NewChatModalProps {
   visible: boolean;
   onClose: () => void;
-  onSubmit: (emails: string[], groupName: string) => void;
+  onSubmit: (selectedUser: User) => void;
+  currentUser?: User | null;
 }
+
+interface UserItemProps {
+  user: User;
+  onSelect: (user: User) => void;
+}
+
+const UserItem = ({ user, onSelect }: UserItemProps) => {
+  return (
+    <TouchableOpacity style={styles.userItem} onPress={() => onSelect(user)}>
+      <Image 
+        source={{ 
+          uri: user.profile_image || `https://api.dicebear.com/7.x/avataaars/png?seed=${user.email}` 
+        }} 
+        style={styles.userAvatar} 
+      />
+      <View style={styles.userInfo}>
+        <Text style={styles.userName}>{user.display_name}</Text>
+        <Text style={styles.userEmail}>{user.email}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color="#666" />
+    </TouchableOpacity>
+  );
+};
 
 export function NewChatModal({
   visible,
   onClose,
   onSubmit,
+  currentUser,
 }: NewChatModalProps) {
-  const [email, setEmail] = useState("");
-  const [emails, setEmails] = useState<string[]>([]);
-  const [groupName, setGroupName] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searching, setSearching] = useState(false);
 
-  const handleAddUser = () => {
-    if (email.trim() && !emails.includes(email.trim())) {
-      setEmails([...emails, email.trim()]);
-      setEmail("");
+  // Load all users when modal opens
+  useEffect(() => {
+    if (visible) {
+      loadUsers();
+    }
+  }, [visible]);
+
+  // Search users when query changes
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      handleSearch();
+    } else {
+      loadUsers();
+    }
+  }, [searchQuery]);
+
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+      const allUsers = await getAllUsers();
+      
+      // Filter out the current user so they can't chat with themselves
+      const filteredUsers = allUsers.filter(user => 
+        currentUser ? user.email !== currentUser.email : true
+      );
+      
+      setUsers(filteredUsers);
+    } catch (error) {
+      console.error('Error loading users:', error);
+      setUsers([]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleRemoveUser = (emailToRemove: string) => {
-    setEmails(emails.filter((e) => e !== emailToRemove));
+  const handleSearch = async () => {
+    try {
+      setSearching(true);
+      const searchResults = await searchUsers(searchQuery);
+      
+      // Filter out the current user from search results too
+      const filteredResults = searchResults.filter(user => 
+        currentUser ? user.email !== currentUser.email : true
+      );
+      
+      setUsers(filteredResults);
+    } catch (error) {
+      console.error('Error searching users:', error);
+    } finally {
+      setSearching(false);
+    }
   };
 
-  const handleCreateChat = () => {
-    if (emails.length > 0) {
-      onSubmit(emails, groupName.trim());
-      setEmails([]);
-      setGroupName("");
-      setEmail("");
+  const handleUserSelect = (selectedUser: User) => {
+    onSubmit(selectedUser);
+    handleClose();
+  };
+
+  const handleClose = () => {
+    setSearchQuery("");
+    setUsers([]);
+    onClose();
+  };
+
+  const renderUser = ({ item }: { item: User }) => (
+    <UserItem user={item} onSelect={handleUserSelect} />
+  );
+
+  const renderEmptyState = () => {
+    if (loading) {
+      return (
+        <View style={styles.emptyState}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.emptyText}>Loading users...</Text>
+        </View>
+      );
     }
+
+    if (searchQuery.trim() && users.length === 0) {
+      return (
+        <View style={styles.emptyState}>
+          <Ionicons name="search" size={48} color="#666" />
+          <Text style={styles.emptyText}>No users found</Text>
+          <Text style={styles.emptySubtext}>Try a different search term</Text>
+        </View>
+      );
+    }
+
+    if (users.length === 0) {
+      return (
+        <View style={styles.emptyState}>
+          <Ionicons name="people" size={48} color="#666" />
+          <Text style={styles.emptyText}>No other users available</Text>
+          <Text style={styles.emptySubtext}>
+            {searchQuery.trim() 
+              ? "No users match your search" 
+              : "Other users will appear here when they join"
+            }
+          </Text>
+        </View>
+      );
+    }
+
+    return null;
   };
 
   return (
@@ -53,7 +168,7 @@ export function NewChatModal({
       visible={visible}
       animationType="slide"
       transparent={true}
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -61,72 +176,43 @@ export function NewChatModal({
       >
         <View style={styles.modalContent}>
           <View style={styles.header}>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+            <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
               <Ionicons name="close" size={24} color="#fff" />
             </TouchableOpacity>
-            <Text style={styles.title}>New Chat</Text>
+            <Text style={styles.title}>Start a Chat</Text>
           </View>
 
-          <ScrollView style={styles.scrollView}>
-            {emails.length > 0 && (
-              <View style={styles.groupNameContainer}>
-                <TextInput
-                  style={styles.groupNameInput}
-                  placeholder="Group Chat Name (Optional)"
-                  placeholderTextColor="#666"
-                  value={groupName}
-                  onChangeText={setGroupName}
-                />
-              </View>
-            )}
-
-            <View style={styles.participantsContainer}>
-              <Text style={styles.sectionTitle}>Participants</Text>
-              {emails.map((email) => (
-                <View key={email} style={styles.participantItem}>
-                  <Text style={styles.participantEmail}>{email}</Text>
-                  <TouchableOpacity
-                    onPress={() => handleRemoveUser(email)}
-                    style={styles.removeButton}
-                  >
-                    <Ionicons name="close-circle" size={20} color="#666" />
-                  </TouchableOpacity>
-                </View>
-              ))}
+          <View style={styles.searchContainer}>
+            <View style={styles.searchInputContainer}>
+              <Ionicons name="search" size={20} color="#666" />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search users..."
+                placeholderTextColor="#666"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {searching && (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              )}
             </View>
-          </ScrollView>
-
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={styles.input}
-              placeholder="Add participant by email"
-              placeholderTextColor="#666"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              autoComplete="email"
-            />
-            <TouchableOpacity
-              style={[
-                styles.addButton,
-                !email.trim() && styles.addButtonDisabled,
-              ]}
-              onPress={handleAddUser}
-              disabled={!email.trim()}
-            >
-              <Ionicons name="add" size={24} color="#fff" />
-            </TouchableOpacity>
           </View>
 
-          {emails.length > 0 && (
-            <TouchableOpacity
-              style={styles.createButton}
-              onPress={handleCreateChat}
-            >
-              <Text style={styles.createButtonText}>Create Chat</Text>
-            </TouchableOpacity>
-          )}
+          <View style={styles.usersContainer}>
+            {users.length > 0 ? (
+              <FlatList
+                data={users}
+                renderItem={renderUser}
+                keyExtractor={(item) => item.id}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.usersList}
+              />
+            ) : (
+              renderEmptyState()
+            )}
+          </View>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -143,7 +229,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: "80%",
+    maxHeight: "85%",
+    minHeight: "60%",
   },
   header: {
     flexDirection: "row",
@@ -161,88 +248,75 @@ const styles = StyleSheet.create({
     color: "#fff",
     marginLeft: 16,
   },
-  scrollView: {
-    maxHeight: 400,
-  },
-  groupNameContainer: {
+  searchContainer: {
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#333",
   },
-  groupNameInput: {
+  searchInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: "#282828",
-    borderRadius: 20,
+    borderRadius: 25,
     paddingHorizontal: 16,
     paddingVertical: 12,
+    gap: 12,
+  },
+  searchInput: {
+    flex: 1,
     color: "#fff",
     fontSize: 16,
   },
-  participantsContainer: {
+  usersContainer: {
+    flex: 1,
+  },
+  usersList: {
     padding: 16,
   },
-  sectionTitle: {
+  userItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "#282828",
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  userAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
+  },
+  userInfo: {
+    flex: 1,
+  },
+  userName: {
     fontSize: 16,
     fontWeight: "600",
     color: "#fff",
-    marginBottom: 12,
+    marginBottom: 2,
   },
-  participantItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#282828",
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 8,
+  userEmail: {
+    fontSize: 14,
+    color: "#666",
   },
-  participantEmail: {
-    color: "#fff",
-    fontSize: 16,
-  },
-  removeButton: {
-    padding: 4,
-  },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 16,
-    gap: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#333",
-  },
-  input: {
+  emptyState: {
     flex: 1,
-    backgroundColor: "#282828",
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    color: "#fff",
-    fontSize: 16,
-  },
-  addButton: {
-    backgroundColor: "#95B3FF",
-    width: 44,
-    height: 44,
-    borderRadius: 22,
     justifyContent: "center",
     alignItems: "center",
+    padding: 32,
   },
-  addButtonDisabled: {
-    opacity: 0.5,
-  },
-  createButton: {
-    backgroundColor: "#95B3FF",
-    margin: 16,
-    padding: 16,
-    borderRadius: 25,
-    alignItems: "center",
-  },
-  createButtonText: {
+  emptyText: {
+    fontSize: 18,
+    fontWeight: "600",
     color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 1,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: "#666",
+    textAlign: "center",
   },
 });

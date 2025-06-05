@@ -1,11 +1,13 @@
 import { Colors, FontSizes, FontWeights, Spacing } from "@/constants/theme";
+import { getConversationMessages } from "@/lib/messaging";
+import { Message } from "@/types/message";
 import { Conversation } from "@/types/conversation";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { MotiView } from "moti";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -17,6 +19,8 @@ import {
 } from "react-native";
 import { PanGestureHandler, State } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
+import getEnv from "../spotify/env";
 
 // Extended type for the message screen
 type ExtendedConversation = {
@@ -40,6 +44,7 @@ type CardData = {
   artist: string;
   lyrics: string[];
   albumCover: string;
+  audioUrl?: string;
 };
 
 type CardItem = {
@@ -49,6 +54,8 @@ type CardItem = {
 
 type CardStackProps = {
   cards: CardData[];
+  playingCard: string | null;
+  setPlayingCard: (cardId: string | null) => void;
 };
 
 type AnimatedCardProps = {
@@ -57,6 +64,9 @@ type AnimatedCardProps = {
   length: number;
   rotateArray: (n: number) => void;
   current: number;
+  cardId: string;
+  playingCard: string | null;
+  setPlayingCard: (cardId: string | null) => void;
 };
 
 // Card animation constants
@@ -64,43 +74,17 @@ const CARD_HEIGHT = 280;
 const CARD_WIDTH = Dimensions.get("window").width * 0.6;
 const VISIBLE_CARDS = 3;
 
-// Create sample data for multiple cards
-const createCardData = (conversation: ExtendedConversation): CardData[] => {
-  const baseCard = {
-    title: conversation.currentSong?.title || "",
-    artist: conversation.currentSong?.artist || "",
-    lyrics: conversation.currentSong?.lyrics || [],
-    albumCover: conversation.currentSong?.albumCover || "",
-  };
+// Create card data from messages (most recent first)
+const createCardDataFromMessages = (messages: Message[]): CardData[] => {
+  if (!messages || messages.length === 0) return [];
 
-  // Create variations of the card with different lyrics
-  return [
-    baseCard,
-    {
-      ...baseCard,
-      lyrics: [
-        "Different verse here",
-        "Another line of music",
-        "Keep the rhythm going",
-      ],
-      title: "Different Song",
-    },
-    {
-      ...baseCard,
-      lyrics: ["Third card lyrics", "Music keeps playing", "Dance to the beat"],
-      title: "Another Track",
-    },
-    {
-      ...baseCard,
-      lyrics: ["Fourth set of lyrics", "Never ending music", "Feel the vibe"],
-      title: "Next Song",
-    },
-    {
-      ...baseCard,
-      lyrics: ["Fifth card content", "Music flows through", "Keep it moving"],
-      title: "Last Track",
-    },
-  ];
+  return messages.slice(-5).reverse().map(message => ({
+    title: message.song_title || "Unknown Song",
+    artist: message.artist || "Unknown Artist",
+    lyrics: message.lyrics || ["No lyrics available"],
+    albumCover: message.album_cover || `https://api.dicebear.com/7.x/shapes/png?seed=${message.song_title}`,
+    audioUrl: message.audio_url,
+  }));
 };
 
 // Mapping function to create duplicates with UIDs for continuous rotation
@@ -110,7 +94,7 @@ const mapData = (data: CardData[], prefix: string): CardItem[] =>
     content: item,
   }));
 
-const CardStack = ({ cards }: CardStackProps) => {
+const CardStack = ({ cards, playingCard, setPlayingCard }: CardStackProps) => {
   // Create multiple copies for seamless rotation (matching original logic)
   const dataClone = [
     ...mapData(cards, "1"), // Exit animations
@@ -153,6 +137,9 @@ const CardStack = ({ cards }: CardStackProps) => {
               card={item.content}
               rotateArray={rotateArray}
               length={length}
+              cardId={item.id}
+              playingCard={playingCard}
+              setPlayingCard={setPlayingCard}
             />
           )
       )}
@@ -166,6 +153,9 @@ const AnimatedCard = ({
   length,
   rotateArray,
   current,
+  cardId,
+  playingCard,
+  setPlayingCard,
 }: AnimatedCardProps) => {
   // Helpers to determine card position (directly from original)
   const isLeft = i < length;
@@ -174,6 +164,69 @@ const AnimatedCard = ({
   const isRight = i > length * 2 - 1 && i < length * 3;
 
   const iFromFirst = i - length;
+  
+  // Audio setup
+  const env = getEnv();
+  const audioUrl = card.audioUrl ? `${card.audioUrl}?apikey=${env.SUPABASE_ANON_KEY}` : undefined;
+  const player = useAudioPlayer(audioUrl ? { uri: audioUrl } : undefined);
+  const status = useAudioPlayerStatus(player);
+  const [isPlayerReady, setIsPlayerReady] = useState(false);
+  const isPlaying = playingCard === cardId;
+
+  // Handle player initialization and cleanup
+  useEffect(() => {
+    if (player && audioUrl) {
+      setIsPlayerReady(true);
+      return () => {
+        try {
+          player.pause();
+          player.remove();
+        } catch (error) {
+          console.log("Error cleaning up player:", error);
+        }
+        setIsPlayerReady(false);
+      };
+    }
+  }, [player, audioUrl]);
+
+  // Auto-play when card becomes visible (first position) and stop when not first
+  useEffect(() => {
+    if (isFirst && audioUrl && player && isPlayerReady) {
+      setPlayingCard(cardId);
+    } else if (!isFirst && isPlaying) {
+      setPlayingCard(null);
+    }
+  }, [isFirst, audioUrl, player, isPlayerReady, cardId, setPlayingCard, isPlaying]);
+
+  // Play/pause logic
+  useEffect(() => {
+    if (!player || !isPlayerReady || !audioUrl) return;
+
+    try {
+      if (isPlaying) {
+        player.play();
+      } else {
+        player.pause();
+      }
+    } catch (error) {
+      console.log("Error controlling playback:", error);
+      setPlayingCard(null);
+    }
+  }, [isPlaying, player, isPlayerReady, audioUrl]);
+
+  // When playback finishes, reset state
+  useEffect(() => {
+    if (status?.didJustFinish && player && isPlayerReady) {
+      try {
+        player.pause();
+        player.remove();
+      } catch (error) {
+        console.log("Error cleaning up finished player:", error);
+      }
+      setPlayingCard(null);
+      setIsPlayerReady(false);
+    }
+  }, [status?.didJustFinish, player, isPlayerReady, setPlayingCard]);
 
   // Calculate positions (adapted from original but simplified for React Native)
   const getCardStyle = () => {
@@ -241,6 +294,13 @@ const AnimatedCard = ({
   const handleTap = () => {
     if (!isFirst) {
       rotateArray(i - length);
+    } else if (audioUrl) {
+      // Toggle play/pause for the current card when it's at the top
+      if (isPlaying) {
+        setPlayingCard(null);
+      } else {
+        setPlayingCard(cardId);
+      }
     }
   };
 
@@ -280,20 +340,32 @@ const AnimatedCard = ({
                 style={styles.albumCover}
               />
               <View style={styles.lyricsContainer}>
-                <Text style={styles.songLyric}>{card.lyrics[0]}</Text>
-                <Text style={styles.songLyric}>{card.lyrics[1]}</Text>
-                <Text style={styles.songLyric}>{card.lyrics[2]}</Text>
+                {card.lyrics.slice(0, 3).map((lyric, index) => (
+                  <Text key={index} style={styles.songLyric}>{lyric}</Text>
+                ))}
+                {card.lyrics.length < 3 && Array.from({ length: 3 - card.lyrics.length }).map((_, index) => (
+                  <Text key={`empty-${index}`} style={styles.songLyric}></Text>
+                ))}
                 <Text style={styles.songMeta}>
                   {card.title} - {card.artist}
                 </Text>
               </View>
               <View style={styles.pulseIconContainer}>
-                <Ionicons
-                  name="pulse"
-                  size={24}
-                  color={Colors.text.primary}
-                  style={styles.pulseIcon}
-                />
+                {audioUrl ? (
+                  <Ionicons
+                    name={isPlaying ? "pause" : "play"}
+                    size={24}
+                    color={Colors.text.primary}
+                    style={styles.pulseIcon}
+                  />
+                ) : (
+                  <Ionicons
+                    name="pulse"
+                    size={24}
+                    color={Colors.text.primary}
+                    style={styles.pulseIcon}
+                  />
+                )}
               </View>
             </View>
           </View>
@@ -303,86 +375,70 @@ const AnimatedCard = ({
   );
 };
 
-// Parse lyrics from the last message
-const parseLyrics = (message: string): string[] => {
-  // For Where Have You Been, split the lyrics appropriately
-  if (message && message.includes("Where have you been")) {
-    return [
-      "All my life, life, life, life",
-      "Where have you been all my li-i-i-i-i-fe?",
-      "Where have you been all my li-i-i-i-i-fe?",
-    ];
-  }
-
-  // For other songs, create basic 3-line lyrics
-  if (!message) return [];
-
-  const lines = message.split(" ");
-  if (lines.length <= 6) {
-    return [message, message, message];
-  }
-
-  const midpoint = Math.floor(lines.length / 3);
-  return [
-    lines.slice(0, midpoint).join(" "),
-    lines.slice(midpoint, midpoint * 2).join(" "),
-    lines.slice(midpoint * 2).join(" "),
-  ];
-};
-
 export default function MessageScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ conversationId: string }>();
-  const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
+  const [playingCard, setPlayingCard] = useState<string | null>(null);
 
+  // Load messages on mount and set up polling
   useEffect(() => {
-    const loadConversation = async () => {
-      if (!params.conversationId) return;
+    loadMessages();
+    
+    // Poll for new messages every 500ms for more responsiveness
+    const interval = setInterval(loadMessages, 500);
+    
+    return () => clearInterval(interval);
+  }, []);
 
-      try {
-        const storedConversations = await AsyncStorage.getItem(
-          "@conversations"
-        );
-        if (storedConversations) {
-          const conversations: Conversation[] = JSON.parse(storedConversations);
-          const foundConversation = conversations.find(
-            (c) => c.id === params.conversationId
-          );
-          setConversation(foundConversation || null);
+  const loadMessages = async () => {
+    try {
+      // Get the latest conversation from storage
+      const storedConversations = await AsyncStorage.getItem("@conversations");
+      let conversation = null;
+      let conversationId = "00000000-0000-0000-0000-000000000001"; // fallback UUID
+      
+      if (storedConversations) {
+        const conversations = JSON.parse(storedConversations);
+        if (conversations.length > 0) {
+          conversation = conversations[0]; // Use the most recent conversation
+          conversationId = conversation.id;
+          setCurrentConversation(conversation);
         }
-      } catch (error) {
-        console.error("Error loading conversation:", error);
-        setConversation(null); // Handle error by setting conversation to null
       }
-    };
 
-    loadConversation();
-  }, [params.conversationId]);
+      const conversationMessages = await getConversationMessages(conversationId);
+      setMessages(conversationMessages);
+    } catch (error) {
+      console.error("Error loading messages:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  // Define ExtendedConversation based on the loaded data or dummy if not found (for structure)
+  // Define ExtendedConversation based on the loaded data
   const extendedConversation = useMemo(() => {
-    if (!conversation) return null;
+    if (!currentConversation) return null;
 
-    // Parse lyrics only if song data exists and lastMessage is not empty
-    const currentSong =
-      conversation.songTitle && conversation.lastMessage
-        ? {
-            title: conversation.songTitle,
-            artist: conversation.artist || "",
-            lyrics: parseLyrics(conversation.lastMessage),
-            albumCover: conversation.albumCover || "",
-          }
-        : undefined;
+    // Get the latest message for current song info
+    const latestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+    const currentSong = latestMessage ? {
+      title: latestMessage.song_title,
+      artist: latestMessage.artist,
+      lyrics: latestMessage.lyrics,
+      albumCover: latestMessage.album_cover || "",
+    } : undefined;
 
     return {
-      id: conversation.id,
-      name: conversation.name,
-      avatars: conversation.avatars,
+      id: currentConversation.id,
+      name: currentConversation.name,
+      avatars: currentConversation.avatars || [],
       currentSong: currentSong,
       members:
-        conversation.participants?.map((email, index) => {
+        currentConversation.participants?.map((email, index) => {
           const username = email.split("@")[0];
-          const nameParts = username.split("."); // Assuming username might be like 'firstName.lastName'
+          const nameParts = username.split(".");
           let initials = "";
           if (nameParts.length > 1) {
             initials = `${nameParts[0].charAt(0)}${nameParts[
@@ -392,35 +448,42 @@ export default function MessageScreen() {
             initials = username.charAt(0);
           }
           return {
-            id: email, // Keep full email as ID for uniqueness
+            id: email,
             avatar:
-              conversation.avatars[index] ||
+              currentConversation.avatars?.[index] ||
               `https://api.dicebear.com/7.x/avataaars/png?seed=${email}`,
-            name: username, // Store the full username as the name
-            initials: initials.toUpperCase(), // Store initials in uppercase
+            name: username,
+            initials: initials.toUpperCase(),
           };
         }) || [],
     };
-  }, [conversation]);
+  }, [currentConversation, messages]);
 
   const handleBackPress = () => {
     router.back();
   };
 
-  // Create card data only if extendedConversation and currentSong exist
+  // Create card data from messages
   const cards = useMemo(() => {
-    if (extendedConversation?.currentSong) {
-      return createCardData(extendedConversation);
-    }
-    return [];
-  }, [extendedConversation]);
+    return createCardDataFromMessages(messages);
+  }, [messages]);
 
-  if (!extendedConversation) {
+  if (loading) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, styles.loadingContainer]}>
         <ActivityIndicator size="large" color="#95B3FF" />
         <Text style={{ color: Colors.text.primary, marginTop: 10 }}>
           Loading Conversation...
+        </Text>
+      </View>
+    );
+  }
+
+  if (!extendedConversation) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <Text style={{ color: Colors.text.primary }}>
+          No conversation found
         </Text>
       </View>
     );
@@ -472,27 +535,23 @@ export default function MessageScreen() {
           )}
 
           {/* Animated Card Stack - Show only if cards exist */}
-          {cards.length > 0 && <CardStack cards={cards} />}
+          {cards.length > 0 ? (
+            <CardStack 
+              cards={cards} 
+              playingCard={playingCard}
+              setPlayingCard={setPlayingCard}
+            />
+          ) : (
+            <View style={styles.noMessagesContainer}>
+              <Text style={styles.noMessagesText}>
+                No messages yet. Tap search to send a snippet!
+              </Text>
+            </View>
+          )}
         </View>
 
-        {/* Bottom user list */}
+        {/* Bottom search bar */}
         <View style={styles.bottomContainer}>
-          <View style={[styles.userAvatarRow, { justifyContent: "center" }]}>
-            {extendedConversation.members.map((member) => (
-              <View key={member.id} style={styles.memberContainer}>
-                <View style={styles.memberAvatarContainer}>
-                  <Image
-                    source={{ uri: member.avatar }}
-                    style={styles.memberAvatar}
-                  />
-                </View>
-                {/* Show initials under each avatar in the bottom row */}
-                <Text style={styles.memberName}>{member.initials}</Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Search bar */}
           <TouchableOpacity
             style={styles.searchContainer}
             onPress={() => router.push("/search")}
@@ -503,7 +562,7 @@ export default function MessageScreen() {
               color={Colors.text.secondary}
               style={styles.searchIcon}
             />
-            <Text style={styles.searchPlaceholder}>Search</Text>
+            <Text style={styles.searchPlaceholder}>Search for music</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -685,5 +744,21 @@ const styles = StyleSheet.create({
   searchPlaceholder: {
     color: Colors.text.secondary,
     fontSize: FontSizes.md,
+  },
+  loadingContainer: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  noMessagesContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: Spacing.xl,
+  },
+  noMessagesText: {
+    color: Colors.text.secondary,
+    fontSize: FontSizes.md,
+    textAlign: "center",
+    fontStyle: "italic",
   },
 });
