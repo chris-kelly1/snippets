@@ -3,8 +3,12 @@ import { ConversationList } from "@/components/conversations/ConversationList";
 import { Header } from "@/components/conversations/Header";
 import { NewChatModal } from "@/components/conversations/NewChatModal";
 import { Colors } from "@/constants/theme";
-import { createConversation, getUserConversations, getConversationMessages } from "@/lib/messaging";
-import { User, ensureCurrentUserExists, testDatabaseConnection } from "@/lib/users";
+import {
+  createConversation,
+  getConversationMessages,
+  getUserConversations,
+} from "@/lib/messaging";
+import { User, ensureCurrentUserExists } from "@/lib/users";
 import { Conversation } from "@/types/conversation";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -43,17 +47,17 @@ export default function Home() {
       try {
         const userRecord = await ensureCurrentUserExists();
         setCurrentUser(userRecord);
-        console.log('Current user initialized:', userRecord);
+        console.log("Current user initialized:", userRecord);
       } catch (error) {
-        console.error('Error initializing user:', error);
+        console.error("Error initializing user:", error);
         Alert.alert(
-          'Database Error',
-          'Could not connect to the database. Please check your internet connection and try again.',
-          [{ text: 'OK' }]
+          "Database Error",
+          "Could not connect to the database. Please check your internet connection and try again.",
+          [{ text: "OK" }]
         );
       }
     };
-    
+
     if (user) {
       initializeUser();
     }
@@ -64,18 +68,18 @@ export default function Home() {
     const loadConversations = async () => {
       try {
         const realConversations = await getUserConversations();
-        
+
         // Add avatars and latest messages to conversations based on participants
         const conversationsWithData = await Promise.all(
           realConversations.map(async (conv) => {
             if (conv.participants && conv.participants.length > 0) {
               // Try to get real user avatars from the database
-              const { getAllUsers } = await import('@/lib/users');
+              const { getAllUsers } = await import("@/lib/users");
               const allUsers = await getAllUsers();
-              
-              const avatars = conv.participants.map(email => {
+
+              const avatars = conv.participants.map((email) => {
                 // Find user in database first
-                const user = allUsers.find(u => u.email === email);
+                const user = allUsers.find((u) => u.email === email);
                 if (user && user.profile_image) {
                   return user.profile_image;
                 }
@@ -84,40 +88,48 @@ export default function Home() {
               });
 
               // Get latest message for this conversation
-              let lastMessage = '';
-              let songTitle = '';
-              let artist = '';
-              let albumCover = '';
-              
+              let lastMessage = "";
+              let songTitle = "";
+              let artist = "";
+              let albumCover = "";
+
               try {
                 const messages = await getConversationMessages(conv.id);
                 if (messages.length > 0) {
                   const latestMessage = messages[messages.length - 1];
-                  lastMessage = latestMessage.lyrics.join(' ');
+                  lastMessage = latestMessage.lyrics.join(" ");
                   songTitle = latestMessage.song_title;
                   artist = latestMessage.artist;
-                  albumCover = latestMessage.album_cover || '';
+                  albumCover = latestMessage.album_cover || "";
                 }
               } catch (error) {
-                console.error(`Error fetching messages for conversation ${conv.id}:`, error);
+                console.error(
+                  `Error fetching messages for conversation ${conv.id}:`,
+                  error
+                );
               }
-              
+
               return {
                 ...conv,
                 avatars,
-                lastMessage: lastMessage || '',
+                lastMessage: lastMessage || "",
                 songTitle,
                 artist,
                 albumCover,
-                time: conv.updated_at ? new Date(conv.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'now'
+                time: conv.updated_at
+                  ? new Date(conv.updated_at).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : "now",
               };
             }
             return conv;
           })
         );
-        
+
         setConversations(conversationsWithData);
-        
+
         // Also save to AsyncStorage as cache
         await AsyncStorage.setItem(
           "@conversations",
@@ -125,7 +137,7 @@ export default function Home() {
         );
       } catch (error) {
         console.error("Error loading conversations:", error);
-        
+
         // Fallback to cached conversations
         try {
           const storedConversations = await AsyncStorage.getItem(
@@ -208,75 +220,88 @@ export default function Home() {
     refreshUser();
   }, []);
 
-  const handleNewChat = async (selectedUser: User) => {
+  // Renamed and modified to handle both 1-on-1 and group chats
+  const handleCreateConversation = async (
+    selectedUsers: User[],
+    groupName: string
+  ) => {
     try {
       if (!currentUser) {
-        Alert.alert('Error', 'You must be logged in to start a chat');
+        Alert.alert("Error", "You must be logged in to start a chat");
         return;
       }
-      
-      const conversationName = selectedUser.display_name;
-      const participants = [currentUser.email, selectedUser.email];
-      
-      // Check if conversation already exists with these participants
-      const existingConversation = conversations.find(conv => {
-        if (conv.participants && conv.participants.length === 2) {
-          return conv.participants.includes(currentUser.email) && 
-                 conv.participants.includes(selectedUser.email);
+
+      // Always include the current user in the participants list
+      const participantEmails = [
+        currentUser.email,
+        ...selectedUsers.map((user) => user.email),
+      ];
+
+      let conversationName = groupName.trim();
+
+      // Handle 1-on-1 chat case: Use the other user's name if no group name provided
+      if (selectedUsers.length === 1 && conversationName === "") {
+        conversationName =
+          selectedUsers[0].display_name || selectedUsers[0].email.split("@")[0];
+      }
+
+      // Ensure group name is not empty for group chats (>2 participants)
+      if (participantEmails.length > 2 && conversationName === "") {
+        Alert.alert("Error", "Group name is required for group chats.");
+        return;
+      }
+
+      // Optional: Check for existing 1-on-1 conversation
+      if (selectedUsers.length === 1) {
+        const otherUserEmail = selectedUsers[0].email;
+        const existingConversation = conversations.find((conv) => {
+          if (conv.participants && conv.participants.length === 2) {
+            return (
+              conv.participants.includes(currentUser.email) &&
+              conv.participants.includes(otherUserEmail)
+            );
+          }
+          return false;
+        });
+
+        if (existingConversation) {
+          console.log(
+            "Found existing 1-on-1 conversation:",
+            existingConversation.id
+          );
+          setIsNewChatModalVisible(false);
+          router.push({
+            pathname: "/message",
+            params: { id: existingConversation.id },
+          });
+          return;
         }
-        return false;
+      }
+
+      console.log("Creating conversation:", {
+        name: conversationName,
+        participants: participantEmails,
+        createdBy: currentUser.email,
       });
 
-      if (existingConversation) {
-        console.log('Found existing conversation:', existingConversation.id);
-        setIsNewChatModalVisible(false);
-        // Navigate to existing conversation
-        router.push('/message');
-        return;
-      }
-      
-      console.log('Creating conversation:', {
-        name: conversationName,
-        participants,
-        createdBy: currentUser.email
-      });
-      
       // Create conversation in Supabase
       const newConversation = await createConversation(
         conversationName,
-        participants,
+        participantEmails,
         currentUser.email
       );
 
-      console.log('Conversation created:', newConversation);
+      console.log("Conversation created successfully:", newConversation);
 
-      // Add avatars for display
-      const conversationWithAvatars = {
-        ...newConversation,
-        avatars: [
-          currentUser.profile_image || `https://api.dicebear.com/7.x/avataaars/png?seed=${currentUser.email}`,
-          selectedUser.profile_image || `https://api.dicebear.com/7.x/avataaars/png?seed=${selectedUser.email}`
-        ],
-        lastMessage: '',
-        time: 'now'
-      };
-
-      // Add the new conversation to the list
-      setConversations([conversationWithAvatars, ...conversations]);
+      // Close modal and navigate to the new conversation
       setIsNewChatModalVisible(false);
-      
-      // Navigate to the new conversation
-      setTimeout(() => {
-        router.push('/message');
-      }, 500);
-      
+      router.push({ pathname: "/message", params: { id: newConversation.id } });
+
+      // Refresh conversations list on home screen
+      refreshConversations();
     } catch (error) {
-      console.error('Error creating conversation:', error);
-      Alert.alert(
-        'Error', 
-        'Failed to create conversation. Please try again.',
-        [{ text: 'OK' }]
-      );
+      console.error("Error creating conversation:", error);
+      Alert.alert("Error", "Failed to create conversation. Please try again.");
     }
   };
 
@@ -284,7 +309,7 @@ export default function Home() {
     try {
       const realConversations = await getUserConversations();
       setConversations(realConversations);
-      
+
       // Update cache
       await AsyncStorage.setItem(
         "@conversations",
@@ -324,8 +349,9 @@ export default function Home() {
       <NewChatModal
         visible={isNewChatModalVisible}
         onClose={() => setIsNewChatModalVisible(false)}
-        onSubmit={handleNewChat}
-        currentUser={currentUser}
+        // Pass selected users and group name to the handler
+        onSubmit={handleCreateConversation}
+        currentUser={currentUser} // Pass the current user as well
       />
     </View>
   );

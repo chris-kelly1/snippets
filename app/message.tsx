@@ -1,13 +1,15 @@
 import { Colors, FontSizes, FontWeights, Spacing } from "@/constants/theme";
 import { getConversationMessages } from "@/lib/messaging";
-import { Message } from "@/types/message";
+import { supabase } from "@/lib/supabase";
+import { User } from "@/lib/users";
 import { Conversation } from "@/types/conversation";
+import { Message } from "@/types/message";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { MotiView } from "moti";
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -19,8 +21,6 @@ import {
 } from "react-native";
 import { PanGestureHandler, State } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
-import getEnv from "../spotify/env";
 
 // Extended type for the message screen
 type ExtendedConversation = {
@@ -35,7 +35,18 @@ type ExtendedConversation = {
         albumCover: string;
       }
     | undefined;
-  members: { id: string; avatar: string; name: string; initials: string }[];
+  currentUser: {
+    id: string;
+    avatar: string;
+    name: string;
+    initials: string;
+  };
+  otherParticipants: {
+    id: string;
+    avatar: string;
+    name: string;
+    initials: string;
+  }[];
 };
 
 // Card type for the animated cards
@@ -74,17 +85,30 @@ const CARD_HEIGHT = 280;
 const CARD_WIDTH = Dimensions.get("window").width * 0.6;
 const VISIBLE_CARDS = 3;
 
+// Define interface for participant data displayed in UI
+interface ParticipantUIData {
+  id: string; // User ID or email
+  avatar: string; // Profile image URL or fallback
+  name: string; // Display name or fallback
+  initials: string; // Initials or fallback
+}
+
 // Create card data from messages (most recent first)
 const createCardDataFromMessages = (messages: Message[]): CardData[] => {
   if (!messages || messages.length === 0) return [];
 
-  return messages.slice(-5).reverse().map(message => ({
-    title: message.song_title || "Unknown Song",
-    artist: message.artist || "Unknown Artist",
-    lyrics: message.lyrics || ["No lyrics available"],
-    albumCover: message.album_cover || `https://api.dicebear.com/7.x/shapes/png?seed=${message.song_title}`,
-    audioUrl: message.audio_url,
-  }));
+  return messages
+    .slice(-5)
+    .reverse()
+    .map((message) => ({
+      title: message.song_title || "Unknown Song",
+      artist: message.artist || "Unknown Artist",
+      lyrics: message.lyrics || ["No lyrics available"],
+      albumCover:
+        message.album_cover ||
+        `https://api.dicebear.com/7.x/shapes/png?seed=${message.song_title}`,
+      audioUrl: message.audio_url,
+    }));
 };
 
 // Mapping function to create duplicates with UIDs for continuous rotation
@@ -164,69 +188,47 @@ const AnimatedCard = ({
   const isRight = i > length * 2 - 1 && i < length * 3;
 
   const iFromFirst = i - length;
-  
+
   // Audio setup
-  const env = getEnv();
-  const audioUrl = card.audioUrl ? `${card.audioUrl}?apikey=${env.SUPABASE_ANON_KEY}` : undefined;
-  const player = useAudioPlayer(audioUrl ? { uri: audioUrl } : undefined);
-  const status = useAudioPlayerStatus(player);
-  const [isPlayerReady, setIsPlayerReady] = useState(false);
-  const isPlaying = playingCard === cardId;
+  // Consider getting SUPABASE_ANON_KEY from environment or context if needed
+  // For now, removing the audio playback logic to simplify and focus on UI
+  // const env = getEnv();
+  // const audioUrl = card.audioUrl ? `${card.audioUrl}?apikey=${env.SUPABASE_ANON_KEY}` : undefined;
+  // const player = useAudioPlayer(audioUrl ? { uri: audioUrl } : undefined);
+  // const status = useAudioPlayerStatus(player);
+  // const isPlaying = status?.isPlaying || false;
+  // const isPlayerReady = status?.isLoaded || false;
 
-  // Handle player initialization and cleanup
-  useEffect(() => {
-    if (player && audioUrl) {
-      setIsPlayerReady(true);
-      return () => {
-        try {
-          player.pause();
-          player.remove();
-        } catch (error) {
-          console.log("Error cleaning up player:", error);
-        }
-        setIsPlayerReady(false);
-      };
-    }
-  }, [player, audioUrl]);
+  // useEffect(() => {
+  //   if (isFirst && playingCard === cardId && isPlayerReady) {
+  //     player?.play();
+  //   } else if (playingCard !== cardId && isPlaying) {
+  //     player?.pause();
+  //   }
+  //   // Pause when the card is no longer the first one
+  //   if (!isFirst && isPlaying) {
+  //     player?.pause();
+  //     setPlayingCard(null);
+  //   }
+  // }, [isFirst, audioUrl, player, isPlayerReady, cardId, setPlayingCard, isPlaying]);
 
-  // Auto-play when card becomes visible (first position) and stop when not first
-  useEffect(() => {
-    if (isFirst && audioUrl && player && isPlayerReady) {
-      setPlayingCard(cardId);
-    } else if (!isFirst && isPlaying) {
-      setPlayingCard(null);
-    }
-  }, [isFirst, audioUrl, player, isPlayerReady, cardId, setPlayingCard, isPlaying]);
-
-  // Play/pause logic
-  useEffect(() => {
-    if (!player || !isPlayerReady || !audioUrl) return;
-
-    try {
-      if (isPlaying) {
-        player.play();
-      } else {
-        player.pause();
-      }
-    } catch (error) {
-      console.log("Error controlling playback:", error);
-      setPlayingCard(null);
-    }
-  }, [isPlaying, player, isPlayerReady, audioUrl]);
-
-  // When playback finishes, reset state
-  useEffect(() => {
-    if (status?.didJustFinish && player && isPlayerReady) {
-      try {
-        player.pause();
-        player.remove();
-      } catch (error) {
-        console.log("Error cleaning up finished player:", error);
-      }
-      setPlayingCard(null);
-      setIsPlayerReady(false);
-    }
-  }, [status?.didJustFinish, player, isPlayerReady, setPlayingCard]);
+  // Play/pause logic (Placeholder)
+  const handleCardPress = () => {
+    // if (isFirst && isPlayerReady) {
+    //   if (isPlaying) {
+    //     player?.pause();
+    //     setPlayingCard(null);
+    //   } else {
+    //     player?.play();
+    //     setPlayingCard(cardId);
+    //   }
+    // } else if (!isFirst) {
+    //   // If not the first card, bring it to the front
+    //   // This requires implementing card reordering logic in CardStack
+    //   console.log('Bring card to front:', cardId);
+    // }
+    console.log("Card pressed:", cardId);
+  };
 
   // Calculate positions (adapted from original but simplified for React Native)
   const getCardStyle = () => {
@@ -294,9 +296,9 @@ const AnimatedCard = ({
   const handleTap = () => {
     if (!isFirst) {
       rotateArray(i - length);
-    } else if (audioUrl) {
+    } else if (card.audioUrl) {
       // Toggle play/pause for the current card when it's at the top
-      if (isPlaying) {
+      if (playingCard === cardId) {
         setPlayingCard(null);
       } else {
         setPlayingCard(cardId);
@@ -341,32 +343,43 @@ const AnimatedCard = ({
               />
               <View style={styles.lyricsContainer}>
                 {card.lyrics.slice(0, 3).map((lyric, index) => (
-                  <Text key={index} style={styles.songLyric}>{lyric}</Text>
+                  <Text key={index} style={styles.songLyric}>
+                    {lyric}
+                  </Text>
                 ))}
-                {card.lyrics.length < 3 && Array.from({ length: 3 - card.lyrics.length }).map((_, index) => (
-                  <Text key={`empty-${index}`} style={styles.songLyric}></Text>
-                ))}
+                {card.lyrics.length < 3 &&
+                  Array.from({ length: 3 - card.lyrics.length }).map(
+                    (_, index) => (
+                      <Text
+                        key={`empty-${index}`}
+                        style={styles.songLyric}
+                      ></Text>
+                    )
+                  )}
                 <Text style={styles.songMeta}>
                   {card.title} - {card.artist}
                 </Text>
               </View>
-              <View style={styles.pulseIconContainer}>
-                {audioUrl ? (
+              {/* Pulse Icon - Placeholder */}
+              {/* {isFirst && isPlaying && (
+                <MotiView
+                  from={{ scale: 1, opacity: 0.5 }}
+                  animate={{ scale: 1.5, opacity: 0 }}
+                  transition={{
+                    type: "timing",
+                    duration: 1000,
+                    loop: true,
+                  }}
+                  style={styles.pulseIconContainer}
+                >
                   <Ionicons
-                    name={isPlaying ? "pause" : "play"}
+                    name="volume-high-outline"
                     size={24}
                     color={Colors.text.primary}
                     style={styles.pulseIcon}
                   />
-                ) : (
-                  <Ionicons
-                    name="pulse"
-                    size={24}
-                    color={Colors.text.primary}
-                    style={styles.pulseIcon}
-                  />
-                )}
-              </View>
+                </MotiView>
+              )} */}
             </View>
           </View>
         </TouchableOpacity>
@@ -377,98 +390,155 @@ const AnimatedCard = ({
 
 export default function MessageScreen() {
   const router = useRouter();
-  const [messages, setMessages] = useState<Message[]>([]);
+  const params = useLocalSearchParams();
+
   const [loading, setLoading] = useState(true);
-  const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [currentConversation, setCurrentConversation] =
+    useState<Conversation | null>(null);
   const [playingCard, setPlayingCard] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
 
-  // Load messages on mount and set up polling
+  // Load conversation data and messages based on conversation ID from params
   useEffect(() => {
-    loadMessages();
-    
-    // Poll for new messages every 500ms for more responsiveness
-    const interval = setInterval(loadMessages, 500);
-    
-    return () => clearInterval(interval);
-  }, []);
+    const conversationId = params.id;
+    // console.log("useEffect [params.id] triggered. params.id:", conversationId);
 
-  const loadMessages = async () => {
-    try {
-      // Get the latest conversation from storage
-      const storedConversations = await AsyncStorage.getItem("@conversations");
-      let conversation = null;
-      let conversationId = "00000000-0000-0000-0000-000000000001"; // fallback UUID
-      
-      if (storedConversations) {
-        const conversations = JSON.parse(storedConversations);
-        if (conversations.length > 0) {
-          conversation = conversations[0]; // Use the most recent conversation
-          conversationId = conversation.id;
-          setCurrentConversation(conversation);
-        }
-      }
-
-      const conversationMessages = await getConversationMessages(conversationId);
-      setMessages(conversationMessages);
-    } catch (error) {
-      console.error("Error loading messages:", error);
-    } finally {
-      setLoading(false);
+    // Only proceed if a valid conversationId string is present
+    if (typeof conversationId !== "string") {
+      // console.log("Conversation ID is not a string, skipping data load.");
+      setLoading(false); // Ensure loading is false if ID is not valid string
+      setCurrentConversation(null); // Clear conversation data
+      return; // Exit the effect
     }
-  };
+
+    // console.log("Valid conversation ID found, loading data:", conversationId);
+    setLoading(true); // Set loading true when we have a valid ID and start fetching
+
+    const loadConversationData = async () => {
+      try {
+        // Fetch the specific conversation
+        const { data: convData, error: convError } = await supabase
+          .from("conversations")
+          .select("*")
+          .eq("id", conversationId)
+          .single();
+
+        if (convError) throw convError;
+        setCurrentConversation(convData);
+
+        // Fetch messages for the conversation
+        const conversationMessages = await getConversationMessages(
+          conversationId
+        );
+        setMessages(conversationMessages);
+      } catch (error) {
+        console.error("Error loading conversation data:", error);
+        setCurrentConversation(null); // Indicate error state
+      } finally {
+        setLoading(false); // Set loading to false when fetch is complete;
+      }
+    };
+
+    loadConversationData();
+
+    // Set up polling interval only if a valid conversationId is available
+    const interval = setInterval(() => loadConversationData(), 500);
+
+    // Cleanup function to clear the interval
+    return () => clearInterval(interval);
+  }, [params.id]); // Depend specifically on params.id
+
+  // Load all users and current user when the component mounts
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const { getAllUsers } = await import("@/lib/users");
+        const users = await getAllUsers();
+        setAllUsers(users);
+
+        const storedUser = await AsyncStorage.getItem("@spotify_user");
+        if (storedUser) {
+          setCurrentUser(JSON.parse(storedUser));
+        }
+      } catch (error) {
+        console.error("Error fetching initial data:", error);
+        setAllUsers([]);
+        setCurrentUser(null);
+      }
+    };
+    fetchData();
+  }, []);
 
   // Define ExtendedConversation based on the loaded data
   const extendedConversation = useMemo(() => {
-    if (!currentConversation) return null;
+    if (!currentConversation || !currentUser || allUsers.length === 0)
+      return null;
 
     // Get the latest message for current song info
-    const latestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
-    const currentSong = latestMessage ? {
-      title: latestMessage.song_title,
-      artist: latestMessage.artist,
-      lyrics: latestMessage.lyrics,
-      albumCover: latestMessage.album_cover || "",
-    } : undefined;
+    const latestMessage =
+      messages.length > 0 ? messages[messages.length - 1] : null;
+    const currentSong = latestMessage
+      ? {
+          title: latestMessage.song_title,
+          artist: latestMessage.artist,
+          lyrics: latestMessage.lyrics,
+          albumCover: latestMessage.album_cover || "",
+        }
+      : undefined;
+
+    // Map participant emails to ParticipantUIData objects
+    const participantsUIData: ParticipantUIData[] =
+      currentConversation.participants?.map((email) => {
+        const participantUser = allUsers.find((user) => user.email === email);
+        // Always return an object conforming to ParticipantUIData interface
+        return {
+          id: participantUser?.id || email, // Use user ID if available, fallback to email
+          avatar:
+            participantUser?.profile_image ||
+            `https://api.dicebear.com/7.x/avataaars/png?seed=${email}`, // Use profile_image if available
+          name: participantUser?.display_name || email.split("@")[0], // Use display_name if available
+          initials:
+            participantUser?.display_name?.[0]?.toUpperCase() ||
+            email.split("@")[0]?.[0]?.toUpperCase() ||
+            "?",
+        };
+      }) || [];
+
+    // Separate current user and other participants based on the UIData structure
+    const currentUserData =
+      participantsUIData.find(
+        (user) =>
+          user.id === currentUser.id || user.name === currentUser.display_name
+      ) || null; // Find current user by ID or display name
+    const otherParticipantsData = participantsUIData.filter(
+      (user) =>
+        user.id !== currentUserData?.id && user.name !== currentUserData?.name
+    );
 
     return {
       id: currentConversation.id,
       name: currentConversation.name,
       avatars: currentConversation.avatars || [],
       currentSong: currentSong,
-      members:
-        currentConversation.participants?.map((email, index) => {
-          const username = email.split("@")[0];
-          const nameParts = username.split(".");
-          let initials = "";
-          if (nameParts.length > 1) {
-            initials = `${nameParts[0].charAt(0)}${nameParts[
-              nameParts.length - 1
-            ].charAt(0)}`;
-          } else if (username.length > 0) {
-            initials = username.charAt(0);
-          }
-          return {
-            id: email,
-            avatar:
-              currentConversation.avatars?.[index] ||
-              `https://api.dicebear.com/7.x/avataaars/png?seed=${email}`,
-            name: username,
-            initials: initials.toUpperCase(),
-          };
-        }) || [],
+      currentUser: currentUserData, // Use the found current user data
+      otherParticipants: otherParticipantsData, // Use the filtered other participants data
     };
-  }, [currentConversation, messages]);
+  }, [currentConversation, messages, currentUser, allUsers]);
 
   const handleBackPress = () => {
     router.back();
   };
 
-  // Create card data from messages
+  // Create card data from messages (cards are now independent of user data)
   const cards = useMemo(() => {
     return createCardDataFromMessages(messages);
   }, [messages]);
 
+  // Conditional rendering based on loading/error state
   if (loading) {
+    // Only check loading state here
     return (
       <View style={[styles.container, styles.loadingContainer]}>
         <ActivityIndicator size="large" color="#95B3FF" />
@@ -479,17 +549,16 @@ export default function MessageScreen() {
     );
   }
 
+  // Add a separate check for when extendedConversation data is not available after loading
   if (!extendedConversation) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
         <Text style={{ color: Colors.text.primary }}>
-          No conversation found
+          Conversation not found or failed to load.
         </Text>
       </View>
     );
   }
-
-  const firstParticipant = extendedConversation.members[0];
 
   return (
     <View style={styles.container}>
@@ -521,13 +590,15 @@ export default function MessageScreen() {
 
         {/* Content */}
         <View style={styles.content}>
-          {/* User Profile - Show first participant */}
-          {firstParticipant && (
+          {/* Current User Profile - Show current user at the top */}
+          {extendedConversation.currentUser && (
             <View style={styles.profileSection}>
-              <Text style={styles.userName}>{firstParticipant.name}</Text>
+              <Text style={styles.userName}>
+                {extendedConversation.currentUser.name}
+              </Text>
               <View style={styles.profileImageContainer}>
                 <Image
-                  source={{ uri: firstParticipant.avatar }}
+                  source={{ uri: extendedConversation.currentUser.avatar }}
                   style={styles.profileImage}
                 />
               </View>
@@ -536,8 +607,8 @@ export default function MessageScreen() {
 
           {/* Animated Card Stack - Show only if cards exist */}
           {cards.length > 0 ? (
-            <CardStack 
-              cards={cards} 
+            <CardStack
+              cards={cards}
               playingCard={playingCard}
               setPlayingCard={setPlayingCard}
             />
@@ -549,6 +620,30 @@ export default function MessageScreen() {
             </View>
           )}
         </View>
+
+        {/* Other Participants List - Show above the search bar */}
+        {extendedConversation.otherParticipants.length > 0 && (
+          <View style={styles.userAvatarRow}>
+            {extendedConversation.otherParticipants.map((member) =>
+              // Ensure member has a valid structure with id, name, and avatar
+              member &&
+              member.id &&
+              member.name !== undefined &&
+              member.avatar !== undefined ? (
+                <View key={member.id} style={styles.memberContainer}>
+                  <View style={styles.memberAvatarContainer}>
+                    <Image
+                      source={{ uri: member.avatar }}
+                      style={styles.memberAvatar}
+                    />
+                  </View>
+                  {/* Show display name under each avatar */}
+                  <Text style={styles.memberName}>{member.name}</Text>
+                </View>
+              ) : null
+            )}
+          </View>
+        )}
 
         {/* Bottom search bar */}
         <View style={styles.bottomContainer}>
@@ -590,7 +685,7 @@ const styles = StyleSheet.create({
     width: 40,
   },
   fakeBackButton: {
-    width: 40, // Same width as the back button for symmetry
+    width: 40,
   },
   headerContent: {
     alignItems: "center",
@@ -706,6 +801,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     marginBottom: Spacing.lg,
     paddingHorizontal: Spacing.md,
+    justifyContent: "center",
   },
   memberContainer: {
     alignItems: "center",
@@ -744,6 +840,7 @@ const styles = StyleSheet.create({
   searchPlaceholder: {
     color: Colors.text.secondary,
     fontSize: FontSizes.md,
+    flex: 1, // Allow placeholder to take available space
   },
   loadingContainer: {
     justifyContent: "center",
