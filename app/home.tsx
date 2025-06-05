@@ -308,12 +308,68 @@ export default function Home() {
   const refreshConversations = async () => {
     try {
       const realConversations = await getUserConversations();
-      setConversations(realConversations);
+
+      // Add avatars and latest messages to conversations based on participants (replicated from loadConversations)
+      const { getAllUsers } = await import("@/lib/users");
+      const allUsers = await getAllUsers();
+
+      const conversationsWithData = await Promise.all(
+        realConversations.map(async (conv) => {
+          if (conv.participants && conv.participants.length > 0) {
+            const avatars = conv.participants.map((email) => {
+              const user = allUsers.find((u) => u.email === email);
+              if (user && user.profile_image) {
+                return user.profile_image;
+              }
+              return `https://api.dicebear.com/7.x/avataaars/png?seed=${email}`;
+            });
+
+            let lastMessage = "";
+            let songTitle = "";
+            let artist = "";
+            let albumCover = "";
+
+            try {
+              const messages = await getConversationMessages(conv.id);
+              if (messages.length > 0) {
+                const latestMessage = messages[messages.length - 1];
+                lastMessage = latestMessage.lyrics.join(" ");
+                songTitle = latestMessage.song_title;
+                artist = latestMessage.artist;
+                albumCover = latestMessage.album_cover || "";
+              }
+            } catch (error) {
+              console.error(
+                `Error fetching messages for conversation ${conv.id}:`,
+                error
+              );
+            }
+
+            return {
+              ...conv,
+              avatars,
+              lastMessage: lastMessage || "",
+              songTitle,
+              artist,
+              albumCover,
+              time: conv.updated_at
+                ? new Date(conv.updated_at).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : "now",
+            };
+          }
+          return conv;
+        })
+      );
+
+      setConversations(conversationsWithData);
 
       // Update cache
       await AsyncStorage.setItem(
         "@conversations",
-        JSON.stringify(realConversations)
+        JSON.stringify(conversationsWithData)
       );
     } catch (error) {
       console.error("Error refreshing conversations:", error);
