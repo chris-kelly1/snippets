@@ -15,7 +15,9 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import VoiceRecorderNew from "../components/VoiceRecorderNew";
 import { updateUserProfile, uploadProfileImage } from "../lib/supabase";
+import { updateUserProfile as updateUserProfileLib } from "../lib/users";
 import useSpotifyAuth from "../spotify/useSpotifyAuth";
 
 export default function ProfileScreen() {
@@ -26,6 +28,8 @@ export default function ProfileScreen() {
     user?.display_name || ""
   );
   const [isUpdating, setIsUpdating] = useState(false);
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
+  const [isProcessingVoice, setIsProcessingVoice] = useState(false);
 
   const handleLogout = async () => {
     try {
@@ -126,6 +130,122 @@ export default function ProfileScreen() {
     } finally {
       setIsUpdating(false);
     }
+  };
+
+  const handleVoiceToggle = async (enabled: boolean) => {
+    if (!user?.id) return;
+
+    if (enabled && !user.voice_model_id) {
+      // Show voice recorder for setup
+      setShowVoiceRecorder(true);
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      await updateUserProfileLib(user.id, {
+        ai_voice_enabled: enabled,
+      });
+
+      // Update local state
+      if (user) {
+        user.ai_voice_enabled = enabled;
+      }
+      await refreshUser();
+    } catch (error) {
+      Alert.alert("Error", "Failed to update AI voice setting");
+      console.error("Error updating AI voice setting:", error);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleVoiceRecordingComplete = async (uri: string, duration: number) => {
+    if (!user?.id) return;
+
+    setIsProcessingVoice(true);
+    setShowVoiceRecorder(false);
+
+    try {
+      console.log('🎤 Processing voice recording via backend API:', uri);
+
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('user_id', user.id);
+      formData.append('user_name', user.display_name || user.email.split('@')[0]);
+      
+      // Add the audio file to FormData
+      formData.append('file', {
+        uri,
+        type: 'audio/m4a',
+        name: 'voice_sample.m4a',
+      } as any);
+
+      console.log('📤 Uploading voice sample to backend...');
+
+      // Upload to backend API
+      const response = await fetch("http://localhost:8000/upload-voice-sample", {
+        method: "POST",
+        body: formData,
+        headers: {
+          // Don't set Content-Type - let the browser set it for FormData
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Backend upload failed: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Backend response:', result);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Backend upload failed');
+      }
+
+      // Update user profile with voice data from backend
+      await updateUserProfileLib(user.id, {
+        ai_voice_enabled: true,
+        voice_sample_url: result.voice_sample_url,
+        voice_model_id: result.voice_model_id,
+      });
+
+      // Update local state
+      if (user) {
+        user.ai_voice_enabled = true;
+        user.voice_sample_url = result.voice_sample_url;
+        user.voice_model_id = result.voice_model_id;
+      }
+      await refreshUser();
+
+      Alert.alert("Success", "AI voice has been set up successfully!");
+    } catch (error) {
+      console.error("💥 Error setting up AI voice:", error);
+      
+      // Check for specific error types
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      if (errorMessage.includes('Subscription Required') || errorMessage.includes('can_not_use_instant_voice_cloning')) {
+        Alert.alert(
+          "Subscription Required", 
+          "Your ElevenLabs account needs a paid subscription to use voice cloning. Please upgrade your ElevenLabs plan and try again."
+        );
+      } else if (errorMessage.includes('Audio Format') || errorMessage.includes('Unsupported file type')) {
+        Alert.alert(
+          "Audio Format Issue", 
+          "There was an issue with the audio format. Please try recording again in a quiet environment."
+        );
+      } else {
+        Alert.alert("Error", `Failed to set up AI voice: ${errorMessage}`);
+      }
+    } finally {
+      setIsProcessingVoice(false);
+    }
+  };
+
+  const handleVoiceRecordingCancel = () => {
+    setShowVoiceRecorder(false);
   };
 
   if (isLoading) {
@@ -242,6 +362,53 @@ export default function ProfileScreen() {
               <Text style={styles.userEmail}>{user?.email}</Text>
             </View>
 
+            {/* AI Voice Section */}
+            <View style={styles.aiVoiceSection}>
+              <Text style={styles.sectionTitle}>AI Voice</Text>
+              <View style={styles.voiceOption}>
+                <View style={styles.voiceOptionInfo}>
+                  <Text style={styles.voiceOptionTitle}>Enable AI Voice</Text>
+                  <Text style={styles.voiceOptionDescription}>
+                    {user?.voice_model_id 
+                      ? "Use your AI voice in messages" 
+                      : "Record your voice to create an AI clone"}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.voiceToggle,
+                    (user?.ai_voice_enabled && user?.voice_model_id) && styles.voiceToggleActive
+                  ]}
+                  onPress={() => handleVoiceToggle(!(user?.ai_voice_enabled && user?.voice_model_id))}
+                  disabled={isUpdating || isProcessingVoice}
+                >
+                  <View style={[
+                    styles.voiceToggleKnob,
+                    (user?.ai_voice_enabled && user?.voice_model_id) && styles.voiceToggleKnobActive
+                  ]} />
+                </TouchableOpacity>
+              </View>
+
+              {user?.voice_model_id && (
+                <TouchableOpacity
+                  style={styles.rerecordButton}
+                  onPress={() => setShowVoiceRecorder(true)}
+                  disabled={isProcessingVoice}
+                >
+                  <Ionicons name="mic" size={16} color="#666" />
+                  <Text style={styles.rerecordButtonText}>Re-record Voice</Text>
+                </TouchableOpacity>
+              )}
+
+              {isProcessingVoice && (
+                <View style={styles.processingContainer}>
+                  <ActivityIndicator color="#95B3FF" />
+                  <Text style={styles.processingText}>Setting up your AI voice...</Text>
+                </View>
+              )}
+
+            </View>
+
             <TouchableOpacity
               style={styles.logoutButton}
               onPress={handleLogout}
@@ -250,6 +417,20 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
         </ScrollView>
+
+        {/* Voice Recorder Modal */}
+        {showVoiceRecorder && (
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <VoiceRecorderNew
+                onRecordingComplete={handleVoiceRecordingComplete}
+                onCancel={handleVoiceRecordingCancel}
+                maxDurationMs={30000}  // 30 seconds max for voice cloning
+                minDurationMs={5000}   // 5 seconds min
+              />
+            </View>
+          </View>
+        )}
       </View>
     </ImageBackground>
   );
@@ -416,5 +597,101 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 1,
+  },
+  aiVoiceSection: {
+    backgroundColor: "#282828",
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 20,
+  },
+  sectionTitle: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 16,
+  },
+  voiceOption: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  voiceOptionInfo: {
+    flex: 1,
+    marginRight: 16,
+  },
+  voiceOptionTitle: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  voiceOptionDescription: {
+    color: "#b3b3b3",
+    fontSize: 14,
+  },
+  voiceToggle: {
+    width: 50,
+    height: 28,
+    backgroundColor: "#444",
+    borderRadius: 14,
+    padding: 2,
+    justifyContent: "center",
+  },
+  voiceToggleActive: {
+    backgroundColor: "#95B3FF",
+  },
+  voiceToggleKnob: {
+    width: 24,
+    height: 24,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    alignSelf: "flex-start",
+  },
+  voiceToggleKnobActive: {
+    alignSelf: "flex-end",
+  },
+  rerecordButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  rerecordButtonText: {
+    color: "#666",
+    fontSize: 14,
+    marginLeft: 8,
+  },
+  processingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  processingText: {
+    color: "#95B3FF",
+    fontSize: 14,
+    marginLeft: 8,
+  },
+  warningText: {
+    color: "#ff4444",
+    fontSize: 12,
+    marginTop: 8,
+  },
+  modalOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.9)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    backgroundColor: "#282828",
+    borderRadius: 12,
+    padding: 20,
+    margin: 20,
+    maxWidth: 400,
+    width: "90%",
   },
 });

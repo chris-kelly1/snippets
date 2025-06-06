@@ -264,16 +264,33 @@ const AnimatedCard = ({
   const isPlayerReady = status?.isLoaded || false;
 
   useEffect(() => {
-    // Manual play only - no auto-play
-    if (playingCard === cardId && isPlayerReady && !isPlaying) {
+    // Auto-play for the first card when "auto-play" is set
+    if (playingCard === "auto-play" && isFirst && isPlayerReady && !isPlaying) {
       player?.play();
-    } else if (playingCard !== cardId && isPlaying) {
-      player?.pause();
+      setPlayingCard(cardId);
+    }
+    // Manual play
+    else if (playingCard === cardId && isPlayerReady && !isPlaying) {
+      player?.play();
+    } 
+    // Pause if this card is not the playing card
+    else if (playingCard !== cardId && playingCard !== "auto-play" && isPlaying) {
+      try {
+        player?.pause();
+      } catch (error) {
+        // Ignore pause errors
+      }
     }
     // Pause when the card is no longer the first one
     if (!isFirst && isPlaying) {
-      player?.pause();
-      setPlayingCard(null);
+      try {
+        player?.pause();
+      } catch (error) {
+        // Ignore pause errors
+      }
+      if (playingCard === cardId) {
+        setPlayingCard(null);
+      }
     }
   }, [
     isFirst,
@@ -290,7 +307,11 @@ const AnimatedCard = ({
   const handlePlayButtonPress = () => {
     if (isFirst && isPlayerReady) {
       if (isPlaying) {
-        player?.pause();
+        try {
+          player?.pause();
+        } catch (error) {
+          // Ignore pause errors
+        }
         setPlayingCard(null);
       } else {
         player?.play();
@@ -358,15 +379,29 @@ const AnimatedCard = ({
     const direction = translationX > 0 ? -1 : 1;
 
     if (minDistance && minVelocity) {
+      const wasPlaying = playingCard !== null;
       rotateArray(direction);
+      // If there was audio playing, continue playing the new first card
+      if (wasPlaying) {
+        setTimeout(() => {
+          // Auto-start the new first card
+          setPlayingCard("auto-play");
+        }, 100);
+      }
     }
   };
 
   const handleTap = () => {
     if (!isFirst) {
+      const wasPlaying = playingCard !== null;
       rotateArray(i - length);
+      // If there was audio playing, continue playing the new first card
+      if (wasPlaying) {
+        setTimeout(() => {
+          setPlayingCard(cardId);
+        }, 100);
+      }
     }
-    // Card taps no longer control audio - only the play button does
   };
 
   return (

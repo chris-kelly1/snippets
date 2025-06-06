@@ -1,9 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-  exchangeCodeAsync,
-  makeRedirectUri,
-  ResponseType,
-  useAuthRequest,
+    exchangeCodeAsync,
+    ResponseType,
+    useAuthRequest
 } from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import { useEffect, useState } from "react";
@@ -27,6 +26,9 @@ interface SpotifyUser {
   email: string;
   id?: string;
   profile_image?: string;
+  voice_model_id?: string | null;
+  voice_sample_url?: string | null;
+  ai_voice_enabled?: boolean | null;
 }
 
 interface UseSpotifyAuthReturn {
@@ -107,6 +109,9 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
           email: userData.email,
           id: userData.id,
           profile_image: userData.images?.[0]?.url,
+          voice_model_id: userData.voice_model_id,
+          voice_sample_url: userData.voice_sample_url,
+          ai_voice_enabled: userData.ai_voice_enabled,
         };
 
         await supabase.from("users").upsert({
@@ -114,6 +119,9 @@ const useSpotifyAuth = (): UseSpotifyAuthReturn => {
           display_name: spotifyUser.display_name,
           email: spotifyUser.email,
           profile_image: spotifyUser.profile_image,
+          voice_model_id: spotifyUser.voice_model_id,
+          voice_sample_url: spotifyUser.voice_sample_url,
+          ai_voice_enabled: spotifyUser.ai_voice_enabled,
         });
 
         setToken(accessToken);

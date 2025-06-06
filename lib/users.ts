@@ -6,6 +6,9 @@ export type User = {
   email: string;
   display_name: string;
   profile_image?: string;
+  ai_voice_enabled?: boolean;
+  voice_sample_url?: string;
+  voice_model_id?: string;
   created_at: string;
   updated_at: string;
 };
@@ -137,6 +140,34 @@ export const searchUsers = async (query: string): Promise<User[]> => {
   } catch (error) {
     console.error('Error in searchUsers:', error);
     return [];
+  }
+};
+
+// Update user profile with AI voice settings
+export const updateUserProfile = async (
+  userId: string,
+  updates: Partial<Pick<User, 'display_name' | 'profile_image' | 'ai_voice_enabled' | 'voice_sample_url' | 'voice_model_id'>>
+): Promise<User | null> => {
+  try {
+    console.log('Updating user profile:', userId, updates);
+    
+    const { data, error } = await supabase
+      .from('users')
+      .update(updates)
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating user profile:', error);
+      throw error;
+    }
+
+    console.log('User profile updated successfully:', data);
+    return data;
+  } catch (error) {
+    console.error('Error in updateUserProfile:', error);
+    return null;
   }
 };
 
