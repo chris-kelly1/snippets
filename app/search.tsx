@@ -4,7 +4,7 @@ import { CreateMessageRequest } from "@/types/message";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -18,6 +18,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { supabase } from "@/lib/supabase";
 import { searchSongs } from "../spotify/apiOptions";
 import getEnv from "../spotify/env";
 import useSpotifyAuth from "../spotify/useSpotifyAuth";
@@ -134,6 +135,7 @@ function SnippetPlayer({
 
 export default function SearchScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const [displayQuery, setDisplayQuery] = useState("");
   const [downloadingSnippets, setDownloadingSnippets] = useState<{
     [key: number]: boolean;
@@ -177,15 +179,12 @@ export default function SearchScreen() {
         return acc;
       }, []);
 
-      // Get the latest conversation ID from storage
-      const storedConversations = await AsyncStorage.getItem("@conversations");
-      let conversationId = "00000000-0000-0000-0000-000000000001"; // fallback UUID
+      // Get conversation ID from route params (passed from message screen)
+      const conversationId = params.conversationId as string;
       
-      if (storedConversations) {
-        const conversations = JSON.parse(storedConversations);
-        if (conversations.length > 0) {
-          conversationId = conversations[0].id; // Use the most recent conversation
-        }
+      if (!conversationId) {
+        Alert.alert("Error", "No conversation selected. Please go back and try again.");
+        return;
       }
 
       const messageRequest: CreateMessageRequest = {
@@ -199,18 +198,61 @@ export default function SearchScreen() {
       };
 
       console.log('Sending message:', messageRequest);
-      await sendMessage(messageRequest);
+      const newMessage = await sendMessage(messageRequest);
+      console.log('Message sent with ID:', newMessage.id);
       
-      Alert.alert(
-        "Snippet Sent!",
-        `Sent "${result.song_info.title}" snippet successfully!`,
-        [
-          {
-            text: "OK",
-            onPress: () => router.back(),
-          },
-        ]
-      );
+      // Poll the database until we can confirm the message exists
+      let messageExists = false;
+      let attempts = 0;
+      const maxAttempts = 20;
+      
+      console.log('Waiting for message to be readable from database...');
+      
+      while (!messageExists && attempts < maxAttempts) {
+        attempts++;
+        console.log(`Attempt ${attempts}/${maxAttempts} - checking if message exists...`);
+        
+        try {
+          const { data: checkMessage, error: checkError } = await supabase
+            .from("messages")
+            .select("id, song_title")
+            .eq("id", newMessage.id)
+            .single();
+            
+          if (checkMessage && !checkError) {
+            messageExists = true;
+            console.log('✅ Message confirmed in database:', checkMessage.song_title);
+            break;
+          } else {
+            console.log('❌ Message not found, error:', checkError?.message);
+          }
+        } catch (error) {
+          console.log('❌ Database check failed:', error);
+        }
+        
+        // Wait 200ms before next attempt
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      
+      if (!messageExists) {
+        console.log('⚠️ Timeout waiting for message confirmation, proceeding anyway');
+      }
+      
+      console.log('🚀 Navigating to preview...');
+      console.log('📤 Message data being passed to preview:', newMessage);
+      
+      // Navigate to preview screen with message data
+      try {
+        router.push({
+          pathname: "/preview",
+          params: {
+            message: JSON.stringify(newMessage)
+          }
+        });
+        console.log('✅ Navigation to preview initiated');
+      } catch (error) {
+        console.error('❌ Navigation error:', error);
+      }
     } catch (error) {
       console.error('Error sending snippet:', error);
       Alert.alert("Error", "Failed to send snippet. Please try again.");

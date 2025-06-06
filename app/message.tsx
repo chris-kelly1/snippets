@@ -10,10 +10,10 @@ import { Conversation } from "@/types/conversation";
 import { Message } from "@/types/message";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { MotiView } from "moti";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -493,55 +493,67 @@ export default function MessageScreen() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [allUsers, setAllUsers] = useState<User[]>([]);
 
+  // Function to load conversation data
+  const loadConversationData = useCallback(async () => {
+    const conversationId = params.id;
+    
+    if (typeof conversationId !== "string") {
+      setLoading(false);
+      setCurrentConversation(null);
+      return;
+    }
+
+    try {
+      // Fetch the specific conversation
+      const { data: convData, error: convError } = await supabase
+        .from("conversations")
+        .select("*")
+        .eq("id", conversationId)
+        .single();
+
+      if (convError) throw convError;
+      setCurrentConversation(convData);
+
+      // Fetch messages for the conversation
+      const conversationMessages = await getConversationMessages(conversationId);
+      setMessages(conversationMessages);
+    } catch (error) {
+      console.error("Error loading conversation data:", error);
+      setCurrentConversation(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [params.id]);
+
   // Load conversation data and messages based on conversation ID from params
   useEffect(() => {
     const conversationId = params.id;
-    // console.log("useEffect [params.id] triggered. params.id:", conversationId);
 
     // Only proceed if a valid conversationId string is present
     if (typeof conversationId !== "string") {
-      // console.log("Conversation ID is not a string, skipping data load.");
-      setLoading(false); // Ensure loading is false if ID is not valid string
-      setCurrentConversation(null); // Clear conversation data
-      return; // Exit the effect
+      setLoading(false);
+      setCurrentConversation(null);
+      return;
     }
 
-    // console.log("Valid conversation ID found, loading data:", conversationId);
-    setLoading(true); // Set loading true when we have a valid ID and start fetching
-
-    const loadConversationData = async () => {
-      try {
-        // Fetch the specific conversation
-        const { data: convData, error: convError } = await supabase
-          .from("conversations")
-          .select("*")
-          .eq("id", conversationId)
-          .single();
-
-        if (convError) throw convError;
-        setCurrentConversation(convData);
-
-        // Fetch messages for the conversation
-        const conversationMessages = await getConversationMessages(
-          conversationId
-        );
-        setMessages(conversationMessages);
-      } catch (error) {
-        console.error("Error loading conversation data:", error);
-        setCurrentConversation(null); // Indicate error state
-      } finally {
-        setLoading(false); // Set loading to false when fetch is complete;
-      }
-    };
-
+    setLoading(true);
     loadConversationData();
 
-    // Set up polling interval only if a valid conversationId is available
-    const interval = setInterval(() => loadConversationData(), 500);
+    // Set up polling interval with reduced frequency
+    const interval = setInterval(() => loadConversationData(), 300);
 
     // Cleanup function to clear the interval
     return () => clearInterval(interval);
-  }, [params.id]); // Depend specifically on params.id
+  }, [params.id, loadConversationData]);
+
+  // Refresh immediately when screen gains focus (returning from search)
+  useFocusEffect(
+    useCallback(() => {
+      if (typeof params.id === "string") {
+        loadConversationData();
+      }
+    }, [params.id, loadConversationData])
+  );
 
   // Load all users and current user when the component mounts
   useEffect(() => {
@@ -621,7 +633,12 @@ export default function MessageScreen() {
   }, [currentConversation, messages, currentUser, allUsers]);
 
   const handleBackPress = () => {
-    router.back();
+    router.push({
+      pathname: "/home",
+      params: {
+        animation: "slide_from_left"
+      }
+    });
   };
 
   // Handle like/unlike functionality
@@ -766,7 +783,10 @@ export default function MessageScreen() {
         <View style={styles.bottomContainer}>
           <TouchableOpacity
             style={styles.searchContainer}
-            onPress={() => router.push("/search")}
+            onPress={() => router.push({
+              pathname: "/search",
+              params: { conversationId: params.id }
+            })}
           >
             <Ionicons
               name="search"
