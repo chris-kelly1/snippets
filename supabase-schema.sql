@@ -88,3 +88,8 @@ CREATE TRIGGER update_conversation_timestamp_trigger
     AFTER INSERT ON public.messages
     FOR EACH ROW
     EXECUTE FUNCTION update_conversation_timestamp();
+
+-- AI Voice functionality for users
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS ai_voice_enabled BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS voice_sample_url TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS voice_model_id TEXT;

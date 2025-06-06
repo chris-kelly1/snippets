@@ -1,10 +1,11 @@
 import { Colors, FontSizes, FontWeights, Spacing } from "@/constants/theme";
 import { sendMessage } from "@/lib/messaging";
+import { supabase } from "@/lib/supabase";
+import { ensureCurrentUserExists } from "@/lib/users";
 import { CreateMessageRequest } from "@/types/message";
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
-import { Stack, useRouter, useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -18,7 +19,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { supabase } from "@/lib/supabase";
 import { searchSongs } from "../spotify/apiOptions";
 import getEnv from "../spotify/env";
 import useSpotifyAuth from "../spotify/useSpotifyAuth";
@@ -72,7 +72,9 @@ function SnippetPlayer({
       setIsPlayerReady(true);
       return () => {
         try {
-          player.pause();
+          if (status?.isLoaded) {
+            player.pause();
+          }
           player.remove();
         } catch (error) {
           console.log("Error cleaning up player:", error);
@@ -80,13 +82,14 @@ function SnippetPlayer({
         setIsPlayerReady(false);
       };
     }
-  }, [player]);
+  }, [player, status]);
 
   // Play/pause logic
   useEffect(() => {
     if (!player || !isPlayerReady) return;
 
     try {
+      if (!status?.isLoaded) return;
       if (isPlaying) {
         player.play();
       } else {
@@ -102,7 +105,7 @@ function SnippetPlayer({
   useEffect(() => {
     if (status?.didJustFinish && player && isPlayerReady) {
       try {
-        player.pause();
+        if (status?.isLoaded) player.pause();
         player.remove();
       } catch (error) {
         console.log("Error cleaning up finished player:", error);
@@ -158,10 +161,28 @@ export default function SearchScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [lastSearchQuery, setLastSearchQuery] = useState(""); // Store the query used for current results
+  const [useAIVoice, setUseAIVoice] = useState<{[key: number]: boolean}>({}); // Track AI voice state per song
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const { token } = useSpotifyAuth();
+
+  // Initialize current user
+  useEffect(() => {
+    const initUser = async () => {
+      const user = await ensureCurrentUserExists();
+      setCurrentUser(user);
+    };
+    initUser();
+  }, []);
 
   const handleBackPress = () => {
     router.back();
+  };
+
+  const toggleVoiceOption = (songId: number) => {
+    setUseAIVoice(prev => ({
+      ...prev,
+      [songId]: !prev[songId]
+    }));
   };
 
   const handleSendSnippet = async (result: SearchResult) => {
@@ -187,13 +208,64 @@ export default function SearchScreen() {
         return;
       }
 
+      let finalAudioUrl = result.snippetUrl || result.song_info.previewUrl || undefined;
+
+      // Generate AI voice if enabled and user has voice model
+      const shouldUseAIVoice = useAIVoice[result.song_info.id] && 
+                               currentUser?.ai_voice_enabled && 
+                               currentUser?.voice_model_id;
+
+      if (shouldUseAIVoice) {
+        try {
+          console.log('🤖 Generating AI voice via backend API for lyrics:', match.text);
+          
+          // Call backend API to generate AI voice
+          const response = await fetch("http://localhost:8000/generate-ai-voice", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify({
+              text: match.text,
+              voice_model_id: currentUser.voice_model_id,
+              voice_settings: {
+                stability: 0.2,        // Lower = more expressive/musical
+                similarity_boost: 0.8, // Keep voice recognition 
+                style: 0.8,            // Higher = more stylized/musical
+                use_speaker_boost: true
+              }
+            }),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Backend AI voice generation failed: ${response.status} - ${errorText}`);
+          }
+
+          const result = await response.json();
+          console.log('✅ Backend AI voice response:', result);
+
+          if (!result.success) {
+            throw new Error(result.error || 'Backend AI voice generation failed');
+          }
+
+          finalAudioUrl = result.audio_url;
+          console.log('🔗 AI voice generated and available at:', finalAudioUrl);
+          
+        } catch (error) {
+          console.error('💥 Error generating AI voice:', error);
+          Alert.alert("Warning", "Failed to generate AI voice. Using original audio instead.");
+        }
+      }
+
       const messageRequest: CreateMessageRequest = {
         conversation_id: conversationId,
         lyrics: lyricsArray.slice(0, 3), // Take first 3 lines
         song_title: result.song_info.title,
         artist: result.song_info.artist,
         album_cover: result.song_info.albumArt || undefined,
-        audio_url: result.snippetUrl || result.song_info.previewUrl || undefined,
+        audio_url: finalAudioUrl,
         spotify_id: result.song_info.spotifyId || result.song_info.id?.toString() || undefined,
       };
 
@@ -654,6 +726,24 @@ export default function SearchScreen() {
               </TouchableOpacity>
             )}
             
+            {/* Voice option toggle - only show if user has AI voice enabled */}
+            {currentUser?.ai_voice_enabled && currentUser?.voice_model_id && (
+              <TouchableOpacity
+                style={[
+                  styles.actionButton,
+                  styles.voiceToggle,
+                  useAIVoice[result.song_info.id] && styles.voiceToggleActive
+                ]}
+                onPress={() => toggleVoiceOption(result.song_info.id)}
+              >
+                <Ionicons
+                  name={useAIVoice[result.song_info.id] ? "mic" : "musical-notes"}
+                  size={20}
+                  color={useAIVoice[result.song_info.id] ? "#fff" : Colors.text.secondary}
+                />
+              </TouchableOpacity>
+            )}
+            
             {/* Send button - always show for testing */}
             <TouchableOpacity
               style={[styles.actionButton, styles.sendButton]}
@@ -853,6 +943,15 @@ const styles = StyleSheet.create({
   sendButton: {
     backgroundColor: Colors.primary,
     borderRadius: 20,
+  },
+  voiceToggle: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.text.secondary,
+  },
+  voiceToggleActive: {
+    backgroundColor: "#95B3FF",
+    borderColor: "#95B3FF",
   },
   actionButtons: {
     flexDirection: "row",

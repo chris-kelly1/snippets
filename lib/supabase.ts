@@ -104,11 +104,11 @@ export const uploadProfileImage = async (
       blobType: blob.type,
     });
 
-    // Upload the image using FormData
+    // Upload the image using blob (consistent with voice upload)
     const { data, error } = await supabase.storage
       .from("users")
-      .upload(filePath, formData, {
-        contentType: "image/jpeg",
+      .upload(filePath, blob, {
+        contentType: blob.type || "image/jpeg",
         upsert: true,
       });
 
@@ -138,6 +138,116 @@ export const uploadProfileImage = async (
     return publicUrl;
   } catch (error) {
     console.error("Error in uploadProfileImage:", error);
+    throw error;
+  }
+};
+
+// Helper function to upload voice sample to Supabase Storage
+export const uploadVoiceSample = async (
+  userId: string,
+  audioUri: string
+): Promise<string> => {
+  try {
+    // Validate input
+    if (!audioUri) {
+      throw new Error("Audio URI is required");
+    }
+
+    console.log("🎤 Starting voice sample upload process for URI:", audioUri);
+
+    // For React Native, we need to handle file:// URIs differently
+    // Use FormData with the React Native file object format
+    const formData = new FormData();
+    
+    // Extract file extension
+    const fileExt = audioUri.split(".").pop() || "m4a";
+    const fileName = `${userId}-voice-sample-${Date.now()}.${fileExt}`;
+    const filePath = `voice_samples/${fileName}`;
+
+    // React Native specific file object format
+    const fileObject = {
+      uri: audioUri,
+      type: 'audio/m4a', // Force to m4a for consistency
+      name: fileName,
+    } as any;
+
+    console.log("📝 File details:", {
+      uri: audioUri,
+      fileName,
+      filePath,
+      type: 'audio/m4a'
+    });
+
+    // Upload using FormData approach which works better in React Native
+    formData.append('file', fileObject);
+
+    // Alternative approach: Read file as blob for more control
+    let blob;
+    try {
+      const response = await fetch(audioUri);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
+      }
+      blob = await response.blob();
+      
+      console.log("📊 Voice sample blob created:", {
+        type: blob.type,
+        size: blob.size,
+        sizeInKB: Math.round(blob.size / 1024),
+      });
+
+      if (!blob || blob.size === 0) {
+        throw new Error("Invalid audio data: blob is empty or undefined");
+      }
+    } catch (fetchError) {
+      console.error("❌ Error creating blob:", fetchError);
+      throw new Error(`Failed to create audio blob: ${(fetchError as Error).message}`);
+    }
+
+    console.log("⬆️ Attempting to upload voice sample to Supabase Storage...");
+
+    // Upload the audio file using blob
+    const { data, error } = await supabase.storage
+      .from("voice-samples")
+      .upload(filePath, blob, {
+        contentType: "audio/m4a", // Force to m4a
+        upsert: true,
+      });
+
+    if (error) {
+      console.error("❌ Supabase Storage upload error:", error);
+      throw error;
+    }
+
+    console.log("✅ Upload successful, data:", data);
+
+    // Get the public URL for the uploaded audio
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from("voice-samples").getPublicUrl(filePath);
+
+    console.log("🔗 Voice sample uploaded successfully. Public URL:", publicUrl);
+
+    // Verify the upload by checking file size
+    try {
+      const { data: fileInfo } = await supabase.storage
+        .from("voice-samples")
+        .list("voice_samples", { search: fileName });
+      
+      if (fileInfo && fileInfo.length > 0) {
+        console.log("✅ Upload verified - file info:", {
+          name: fileInfo[0].name,
+          size: fileInfo[0].metadata?.size,
+          contentType: fileInfo[0].metadata?.mimetype
+        });
+      }
+    } catch (verifyError) {
+      console.warn("⚠️ Could not verify upload:", verifyError);
+    }
+
+    return publicUrl;
+  } catch (error) {
+    console.error("💥 Error in uploadVoiceSample:", error);
     throw error;
   }
 };
