@@ -10,6 +10,7 @@ import { Conversation } from "@/types/conversation";
 import { Message } from "@/types/message";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { MotiView } from "moti";
@@ -25,6 +26,7 @@ import {
 } from "react-native";
 import { PanGestureHandler, State } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
+import getEnv from "../spotify/env";
 
 // Extended type for the message screen
 type ExtendedConversation = {
@@ -252,44 +254,49 @@ const AnimatedCard = ({
   const iFromFirst = i - length;
 
   // Audio setup
-  // Consider getting SUPABASE_ANON_KEY from environment or context if needed
-  // For now, removing the audio playback logic to simplify and focus on UI
-  // const env = getEnv();
-  // const audioUrl = card.audioUrl ? `${card.audioUrl}?apikey=${env.SUPABASE_ANON_KEY}` : undefined;
-  // const player = useAudioPlayer(audioUrl ? { uri: audioUrl } : undefined);
-  // const status = useAudioPlayerStatus(player);
-  // const isPlaying = status?.isPlaying || false;
-  // const isPlayerReady = status?.isLoaded || false;
+  const env = getEnv();
+  const audioUrl = card.audioUrl
+    ? `${card.audioUrl}?apikey=${env.SUPABASE_ANON_KEY}`
+    : undefined;
+  const player = useAudioPlayer(audioUrl ? { uri: audioUrl } : undefined);
+  const status = useAudioPlayerStatus(player);
+  const isPlaying = status?.playing || false;
+  const isPlayerReady = status?.isLoaded || false;
 
-  // useEffect(() => {
-  //   if (isFirst && playingCard === cardId && isPlayerReady) {
-  //     player?.play();
-  //   } else if (playingCard !== cardId && isPlaying) {
-  //     player?.pause();
-  //   }
-  //   // Pause when the card is no longer the first one
-  //   if (!isFirst && isPlaying) {
-  //     player?.pause();
-  //     setPlayingCard(null);
-  //   }
-  // }, [isFirst, audioUrl, player, isPlayerReady, cardId, setPlayingCard, isPlaying]);
+  useEffect(() => {
+    // Manual play only - no auto-play
+    if (playingCard === cardId && isPlayerReady && !isPlaying) {
+      player?.play();
+    } else if (playingCard !== cardId && isPlaying) {
+      player?.pause();
+    }
+    // Pause when the card is no longer the first one
+    if (!isFirst && isPlaying) {
+      player?.pause();
+      setPlayingCard(null);
+    }
+  }, [
+    isFirst,
+    audioUrl,
+    player,
+    isPlayerReady,
+    cardId,
+    setPlayingCard,
+    isPlaying,
+    playingCard,
+  ]);
 
-  // Play/pause logic (Placeholder)
-  const handleCardPress = () => {
-    // if (isFirst && isPlayerReady) {
-    //   if (isPlaying) {
-    //     player?.pause();
-    //     setPlayingCard(null);
-    //   } else {
-    //     player?.play();
-    //     setPlayingCard(cardId);
-    //   }
-    // } else if (!isFirst) {
-    //   // If not the first card, bring it to the front
-    //   // This requires implementing card reordering logic in CardStack
-    //   console.log('Bring card to front:', cardId);
-    // }
-    console.log("Card pressed:", cardId);
+  // Play/pause logic for manual button press
+  const handlePlayButtonPress = () => {
+    if (isFirst && isPlayerReady) {
+      if (isPlaying) {
+        player?.pause();
+        setPlayingCard(null);
+      } else {
+        player?.play();
+        setPlayingCard(cardId);
+      }
+    }
   };
 
   // Calculate positions (adapted from original but simplified for React Native)
@@ -358,14 +365,8 @@ const AnimatedCard = ({
   const handleTap = () => {
     if (!isFirst) {
       rotateArray(i - length);
-    } else if (card.audioUrl) {
-      // Toggle play/pause for the current card when it's at the top
-      if (playingCard === cardId) {
-        setPlayingCard(null);
-      } else {
-        setPlayingCard(cardId);
-      }
     }
+    // Card taps no longer control audio - only the play button does
   };
 
   return (
@@ -398,6 +399,21 @@ const AnimatedCard = ({
           activeOpacity={0.9}
         >
           <View style={styles.cardContent}>
+            {/* Play Button - Bottom Left Corner */}
+            {isFirst && card.audioUrl && (
+              <TouchableOpacity
+                style={styles.playButtonCorner}
+                onPress={handlePlayButtonPress}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name={isPlaying ? "pause" : "play"}
+                  size={18}
+                  color={Colors.text.primary}
+                />
+              </TouchableOpacity>
+            )}
+
             {/* Like Button - Bottom Right Corner */}
             <TouchableOpacity
               style={styles.likeButtonCorner}
@@ -454,7 +470,7 @@ const AnimatedCard = ({
               </View>
 
               {/* Pulse Icon - Placeholder */}
-              {/* {isFirst && isPlaying && (
+              {isFirst && isPlaying && (
                 <MotiView
                   from={{ scale: 1, opacity: 0.5 }}
                   animate={{ scale: 1.5, opacity: 0 }}
@@ -472,7 +488,7 @@ const AnimatedCard = ({
                     style={styles.pulseIcon}
                   />
                 </MotiView>
-              )} */}
+              )}
             </View>
           </View>
         </TouchableOpacity>
@@ -1031,6 +1047,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginLeft: 4,
     fontWeight: "600",
+  },
+  playButtonCorner: {
+    position: "absolute",
+    bottom: 12,
+    left: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    borderRadius: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    zIndex: 10,
   },
   likeButtonCorner: {
     position: "absolute",
