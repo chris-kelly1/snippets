@@ -12,6 +12,8 @@ export type Message = {
   spotify_id?: string;
   created_at: string;
   updated_at: string;
+  likes?: string[]; // Array of user IDs who liked the message
+  like_count?: number; // Total number of likes
 };
 
 export type CreateMessageRequest = {

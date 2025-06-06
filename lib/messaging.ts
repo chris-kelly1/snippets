@@ -180,3 +180,121 @@ export const subscribeToConversationMessages = (
     },
   };
 };
+
+export const likeMessage = async (messageId: string): Promise<Message> => {
+  try {
+    const user = await AsyncStorage.getItem("@spotify_user");
+    if (!user) {
+      throw new Error("User not authenticated - please log in again");
+    }
+
+    const userData = JSON.parse(user);
+    console.log("Liking message:", messageId, "by user:", userData.id);
+
+    // First, get the current message to check existing likes
+    const { data: currentMessage, error: fetchError } = await supabase
+      .from("messages")
+      .select("likes, like_count")
+      .eq("id", messageId)
+      .single();
+
+    if (fetchError) {
+      console.error("Error fetching current message:", fetchError);
+      throw fetchError;
+    }
+
+    const currentLikes = currentMessage.likes || [];
+    const currentLikeCount = currentMessage.like_count || 0;
+
+    // Check if user already liked the message
+    if (currentLikes.includes(userData.id)) {
+      console.log("User already liked this message");
+      return currentMessage as Message;
+    }
+
+    // Add user to likes array
+    const updatedLikes = [...currentLikes, userData.id];
+    const updatedLikeCount = currentLikeCount + 1;
+
+    const { data, error } = await supabase
+      .from("messages")
+      .update({
+        likes: updatedLikes,
+        like_count: updatedLikeCount,
+      })
+      .eq("id", messageId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error liking message:", error);
+      throw error;
+    }
+
+    console.log("Message liked successfully:", data);
+    return data;
+  } catch (error) {
+    console.error("Error liking message:", error);
+    throw error;
+  }
+};
+
+export const unlikeMessage = async (messageId: string): Promise<Message> => {
+  try {
+    const user = await AsyncStorage.getItem("@spotify_user");
+    if (!user) {
+      throw new Error("User not authenticated - please log in again");
+    }
+
+    const userData = JSON.parse(user);
+    console.log("Unliking message:", messageId, "by user:", userData.id);
+
+    // First, get the current message to check existing likes
+    const { data: currentMessage, error: fetchError } = await supabase
+      .from("messages")
+      .select("likes, like_count")
+      .eq("id", messageId)
+      .single();
+
+    if (fetchError) {
+      console.error("Error fetching current message:", fetchError);
+      throw fetchError;
+    }
+
+    const currentLikes = currentMessage.likes || [];
+    const currentLikeCount = currentMessage.like_count || 0;
+
+    // Check if user hasn't liked the message
+    if (!currentLikes.includes(userData.id)) {
+      console.log("User hasn't liked this message");
+      return currentMessage as Message;
+    }
+
+    // Remove user from likes array
+    const updatedLikes = currentLikes.filter(
+      (userId: string) => userId !== userData.id
+    );
+    const updatedLikeCount = Math.max(0, currentLikeCount - 1);
+
+    const { data, error } = await supabase
+      .from("messages")
+      .update({
+        likes: updatedLikes,
+        like_count: updatedLikeCount,
+      })
+      .eq("id", messageId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error unliking message:", error);
+      throw error;
+    }
+
+    console.log("Message unliked successfully:", data);
+    return data;
+  } catch (error) {
+    console.error("Error unliking message:", error);
+    throw error;
+  }
+};

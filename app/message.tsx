@@ -1,5 +1,9 @@
 import { Colors, FontSizes, FontWeights, Spacing } from "@/constants/theme";
-import { getConversationMessages } from "@/lib/messaging";
+import {
+  getConversationMessages,
+  likeMessage,
+  unlikeMessage,
+} from "@/lib/messaging";
 import { supabase } from "@/lib/supabase";
 import { User } from "@/lib/users";
 import { Conversation } from "@/types/conversation";
@@ -51,6 +55,7 @@ type ExtendedConversation = {
 
 // Card type for the animated cards
 type CardData = {
+  id: string; // Message ID for like/unlike functionality
   title: string;
   artist: string;
   lyrics: string[];
@@ -60,6 +65,9 @@ type CardData = {
   senderName: string;
   senderAvatar: string;
   senderId: string;
+  likes: string[]; // Array of user IDs who liked the message
+  likeCount: number; // Total number of likes
+  isLikedByCurrentUser: boolean; // Whether current user has liked this message
 };
 
 type CardItem = {
@@ -71,6 +79,7 @@ type CardStackProps = {
   cards: CardData[];
   playingCard: string | null;
   setPlayingCard: (cardId: string | null) => void;
+  onLikeToggle: (messageId: string, isCurrentlyLiked: boolean) => void;
 };
 
 type AnimatedCardProps = {
@@ -82,6 +91,7 @@ type AnimatedCardProps = {
   cardId: string;
   playingCard: string | null;
   setPlayingCard: (cardId: string | null) => void;
+  onLikeToggle: (messageId: string, isCurrentlyLiked: boolean) => void;
 };
 
 // Card animation constants
@@ -100,7 +110,8 @@ interface ParticipantUIData {
 // Create card data from messages (most recent first)
 const createCardDataFromMessages = (
   messages: Message[],
-  allUsers: User[]
+  allUsers: User[],
+  currentUserId?: string
 ): CardData[] => {
   if (!messages || messages.length === 0) return [];
 
@@ -123,7 +134,15 @@ const createCardDataFromMessages = (
         hour12: true,
       });
 
+      // Handle likes data
+      const likes = message.likes || [];
+      const likeCount = message.like_count || 0;
+      const isLikedByCurrentUser = currentUserId
+        ? likes.includes(currentUserId)
+        : false;
+
       return {
+        id: message.id,
         title: message.song_title || "Unknown Song",
         artist: message.artist || "Unknown Artist",
         lyrics: message.lyrics || ["No lyrics available"],
@@ -140,6 +159,9 @@ const createCardDataFromMessages = (
           senderUser?.profile_image ||
           `https://api.dicebear.com/7.x/avataaars/png?seed=${message.sender_email}`,
         senderId: message.sender_id,
+        likes,
+        likeCount,
+        isLikedByCurrentUser,
       };
     });
 };
@@ -151,7 +173,12 @@ const mapData = (data: CardData[], prefix: string): CardItem[] =>
     content: item,
   }));
 
-const CardStack = ({ cards, playingCard, setPlayingCard }: CardStackProps) => {
+const CardStack = ({
+  cards,
+  playingCard,
+  setPlayingCard,
+  onLikeToggle,
+}: CardStackProps) => {
   // Create multiple copies for seamless rotation (matching original logic)
   const dataClone = [
     ...mapData(cards, "1"), // Exit animations
@@ -197,6 +224,7 @@ const CardStack = ({ cards, playingCard, setPlayingCard }: CardStackProps) => {
               cardId={item.id}
               playingCard={playingCard}
               setPlayingCard={setPlayingCard}
+              onLikeToggle={onLikeToggle}
             />
           )
       )}
@@ -213,6 +241,7 @@ const AnimatedCard = ({
   cardId,
   playingCard,
   setPlayingCard,
+  onLikeToggle,
 }: AnimatedCardProps) => {
   // Helpers to determine card position (directly from original)
   const isLeft = i < length;
@@ -369,6 +398,24 @@ const AnimatedCard = ({
           activeOpacity={0.9}
         >
           <View style={styles.cardContent}>
+            {/* Like Button - Bottom Right Corner */}
+            <TouchableOpacity
+              style={styles.likeButtonCorner}
+              onPress={() => onLikeToggle(card.id, card.isLikedByCurrentUser)}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={card.isLikedByCurrentUser ? "heart" : "heart-outline"}
+                size={18}
+                color={
+                  card.isLikedByCurrentUser ? "#FF4757" : Colors.text.secondary
+                }
+              />
+              {card.likeCount > 0 && (
+                <Text style={styles.likeCountCorner}>{card.likeCount}</Text>
+              )}
+            </TouchableOpacity>
+
             <View style={styles.cardInner}>
               {/* Header with profile photo and timestamp */}
               <View style={styles.cardHeader}>
@@ -405,6 +452,7 @@ const AnimatedCard = ({
                   {card.title} - {card.artist}
                 </Text>
               </View>
+
               {/* Pulse Icon - Placeholder */}
               {/* {isFirst && isPlaying && (
                 <MotiView
@@ -576,10 +624,33 @@ export default function MessageScreen() {
     router.back();
   };
 
+  // Handle like/unlike functionality
+  const handleLikeToggle = async (
+    messageId: string,
+    isCurrentlyLiked: boolean
+  ) => {
+    try {
+      if (isCurrentlyLiked) {
+        await unlikeMessage(messageId);
+      } else {
+        await likeMessage(messageId);
+      }
+
+      // Refresh messages to get updated like counts
+      const conversationId = params.id;
+      if (typeof conversationId === "string") {
+        const updatedMessages = await getConversationMessages(conversationId);
+        setMessages(updatedMessages);
+      }
+    } catch (error) {
+      console.error("Error toggling like:", error);
+    }
+  };
+
   // Create card data from messages (cards are now independent of user data)
   const cards = useMemo(() => {
-    return createCardDataFromMessages(messages, allUsers);
-  }, [messages, allUsers]);
+    return createCardDataFromMessages(messages, allUsers, currentUser?.id);
+  }, [messages, allUsers, currentUser?.id]);
 
   // Conditional rendering based on loading/error state
   if (loading) {
@@ -656,6 +727,7 @@ export default function MessageScreen() {
               cards={cards}
               playingCard={playingCard}
               setPlayingCard={setPlayingCard}
+              onLikeToggle={handleLikeToggle}
             />
           ) : (
             <View style={styles.noMessagesContainer}>
@@ -928,5 +1000,39 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.md,
     textAlign: "center",
     fontStyle: "italic",
+  },
+  likeContainer: {
+    alignItems: "center",
+    marginTop: 8,
+  },
+  likeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  likeCount: {
+    color: Colors.text.secondary,
+    fontSize: 12,
+    marginLeft: 4,
+    fontWeight: "600",
+  },
+  likeButtonCorner: {
+    position: "absolute",
+    bottom: 12,
+    right: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    borderRadius: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    zIndex: 10,
+  },
+  likeCountCorner: {
+    color: Colors.text.primary,
+    fontSize: 11,
+    marginLeft: 4,
+    fontWeight: "600",
   },
 });
