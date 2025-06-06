@@ -1,4 +1,3 @@
-import { ConversationFilters } from "@/components/conversations/ConversationFilters";
 import { ConversationList } from "@/components/conversations/ConversationList";
 import { Header } from "@/components/conversations/Header";
 import { NewChatModal } from "@/components/conversations/NewChatModal";
@@ -390,7 +389,6 @@ export default function Home() {
         <Header profileImageUrl={profileImageUrl} />
 
         <View style={styles.content}>
-          <ConversationFilters activeFilter="All" />
           <ConversationList conversations={conversations} />
         </View>
       </SafeAreaView>

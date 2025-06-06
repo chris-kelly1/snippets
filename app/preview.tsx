@@ -36,8 +36,9 @@ export default function PreviewScreen() {
   console.log('✅ Preview screen rendering with message:', messageData.song_title);
 
   const handleContinue = () => {
-    // Navigate to the messages page with conversation ID as query parameter
-    router.replace({
+    // Navigate back to the messages page, replacing the entire stack from search onwards
+    router.dismissAll();
+    router.push({
       pathname: "/message",
       params: { id: messageData.conversation_id }
     });

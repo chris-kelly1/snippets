@@ -633,12 +633,7 @@ export default function MessageScreen() {
   }, [currentConversation, messages, currentUser, allUsers]);
 
   const handleBackPress = () => {
-    router.push({
-      pathname: "/home",
-      params: {
-        animation: "slide_from_left"
-      }
-    });
+    router.back();
   };
 
   // Handle like/unlike functionality
